@@ -82,7 +82,7 @@ async function build(inputPptx, outDir) {
   const { emuToPx } = require('./src/utils/units');
   const slideW = Math.round(emuToPx(pres.widthEmu));
   const slideH = Math.round(emuToPx(pres.heightEmu));
-  const slidesHtml = renderSlides(slidesData, pres);
+  const slidesHtml = renderSlides(slidesData, { widthEmu: pres.widthEmu, heightEmu: pres.heightEmu, roundSize: true });
 
   // 6. 复制静态资源
   copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));

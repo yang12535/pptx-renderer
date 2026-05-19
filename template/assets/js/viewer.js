@@ -9,7 +9,6 @@
   var CONFIG = {
     slideSelector: '.slide',
     stageInnerId: 'stage-inner',
-    transitionDuration: 450,   // 与 CSS transition 一致
     autoScale: true,
     scalePadding: 40,
     minScale: 0.3,
@@ -24,6 +23,7 @@
   var touchStartX = 0;
   var touchStartY = 0;
   var controlsTimer = null;
+  var thumbnailsBuilt = false;
 
   // ── DOM 引用 ──
   var stage = document.getElementById('stage');
@@ -44,7 +44,6 @@
     if (total === 0) return;
 
     bindEvents();
-    buildThumbnails();
     applyAutoScale();
     show(0, 0);
   }
@@ -56,16 +55,22 @@
 
     var prev = current;
     current = index;
-    direction = direction || (index > prev ? 1 : -1);
+    if (typeof direction !== 'number') {
+      direction = index > prev ? 1 : -1;
+    }
 
-    // 移除旧幻灯片的动画类，让元素回到初始态
+    // 只重置上一个活动幻灯片的子元素动画，避免遍历所有幻灯片
+    var prevSlide = slides[prev];
+    if (prevSlide && prev !== current) {
+      prevSlide.classList.remove('active');
+      prevSlide.classList.remove('enter-right', 'enter-left', 'enter-up', 'enter-down', 'enter-zoom');
+      resetElementAnimations(prevSlide);
+    }
+
+    // 确保其他幻灯片状态干净（不触发 reflow）
     slides.forEach(function (s, i) {
-      s.classList.remove('active');
-      s.classList.remove('enter-right', 'enter-left', 'enter-up', 'enter-down', 'enter-zoom');
-
-      // 重置子元素动画
-      if (i !== current) {
-        resetElementAnimations(s);
+      if (i !== prev && i !== current) {
+        s.classList.remove('active', 'enter-right', 'enter-left', 'enter-up', 'enter-down', 'enter-zoom');
       }
     });
 
@@ -148,7 +153,8 @@
 
   // ── 缩略图 ──
   function buildThumbnails() {
-    if (!thumbnails || !stageInner) return;
+    if (!thumbnails || !stageInner || thumbnailsBuilt) return;
+    thumbnailsBuilt = true;
     thumbnails.innerHTML = '';
 
     slides.forEach(function (slide, i) {
@@ -158,16 +164,23 @@
       thumb.setAttribute('tabindex', '0');
       thumb.setAttribute('aria-label', '跳转到第 ' + (i + 1) + ' 页');
 
+      // 轻量缩略图：只复制背景色和少量文本，不复制完整 DOM
       var inner = document.createElement('div');
       inner.className = 'thumb-inner';
-      inner.innerHTML = slide.innerHTML;
+      // 提取 slide 的背景色
+      var bg = slide.style.background || slide.style.backgroundColor || '#fff';
+      inner.style.background = bg;
+      inner.style.width = '100%';
+      inner.style.height = '100%';
 
-      // 缩略图需要按比例缩小
-      var nativeW = parseInt(stageInner.dataset.width || '960', 10);
-      var thumbScale = 120 / nativeW;
-      inner.style.transform = 'scale(' + thumbScale.toFixed(4) + ')';
-      inner.style.width = nativeW + 'px';
-      inner.style.height = (parseInt(stageInner.dataset.height || '540', 10)) + 'px';
+      // 尝试提取第一个文本作为缩略图标签
+      var firstText = slide.querySelector('.p-txBody');
+      if (firstText) {
+        var label = document.createElement('div');
+        label.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90%;';
+        label.textContent = firstText.textContent.slice(0, 20);
+        inner.appendChild(label);
+      }
 
       thumb.appendChild(inner);
       thumb.addEventListener('click', function () { show(i, i > current ? 1 : -1); });
@@ -196,9 +209,13 @@
   }
 
   function onFullscreenChange() {
+    var wasFullscreen = isFullscreen;
     isFullscreen = !!document.fullscreenElement;
     if (btnFullscreen) {
       btnFullscreen.textContent = isFullscreen ? '退出全屏' : '全屏';
+    }
+    if (isFullscreen && !wasFullscreen) {
+      showToast('已进入全屏模式，按 F 或 Esc 退出');
     }
     setTimeout(applyAutoScale, 100);
   }

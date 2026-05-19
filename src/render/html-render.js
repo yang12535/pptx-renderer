@@ -34,9 +34,13 @@ function pickAnimClass(el, index) {
 }
 
 function renderSlides(slides, presMeta) {
-  const { widthEmu, heightEmu } = presMeta;
-  const slideW = emuToPx(widthEmu);
-  const slideH = emuToPx(heightEmu);
+  const { widthEmu, heightEmu, roundSize } = presMeta;
+  let slideW = emuToPx(widthEmu);
+  let slideH = emuToPx(heightEmu);
+  if (roundSize) {
+    slideW = Math.round(slideW);
+    slideH = Math.round(slideH);
+  }
 
   return slides.map((slide, idx) => renderSlide(slide, idx, slideW, slideH)).join('\n');
 }
@@ -102,19 +106,19 @@ function renderElement(el, index) {
 
 function renderLine(el, baseStyle, animClass, animDelay) {
   const xf = el.xfrm;
-  const line = el.line;
+  const line = el.line || { width: 1, color: '#000', dash: null };
   const dx = xf.width;
   const dy = xf.height;
   const length = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
   let style = `position:absolute;left:${xf.x}px;top:${xf.y}px;`;
-  style += `width:${length}px;height:${line.width || 1}px;`;
-  style += `background:${line.color || '#000'};`;
+  style += `width:${length}px;height:${line.width}px;`;
+  style += `background:${line.color};`;
   style += `transform:rotate(${angle}deg);transform-origin:0 0;`;
   style += `animation-delay:${animDelay}ms;`;
   if (line.dash && line.dash !== 'solid') {
-    style += 'background:repeating-linear-gradient(90deg,' + (line.color || '#000') + ',' + (line.color || '#000') + ' 4px,transparent 4px,transparent 8px);';
+    style += 'background:repeating-linear-gradient(90deg,' + line.color + ',' + line.color + ' 4px,transparent 4px,transparent 8px);';
   }
   return `<div class="p-el p-line ${animClass}" style="${style}"></div>`;
 }
