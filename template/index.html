@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPTX Viewer</title>
+<style>{{STYLE}}</style>
+</head>
+<body>
+<div id="stage">
+{{SLIDES}}
+</div>
+<div id="controls">
+  <button id="prev">←</button>
+  <span id="page">1 / {{SLIDE_COUNT}}</span>
+  <button id="next">→</button>
+</div>
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+  function show(i) {
+    slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+    document.getElementById('page').textContent = (i + 1) + ' / ' + total;
+    document.getElementById('prev').disabled = i === 0;
+    document.getElementById('next').disabled = i === total - 1;
+  }
+  document.getElementById('prev').onclick = () => { if (current > 0) show(--current); };
+  document.getElementById('next').onclick = () => { if (current < total - 1) show(++current); };
+  show(0);
+})();
+</script>
+</body>
+</html>

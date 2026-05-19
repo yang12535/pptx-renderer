@@ -1,0 +1,13 @@
+{
+  "name": "pptx-renderer",
+  "version": "0.1.0",
+  "description": "Lightweight PPTX to static site generator",
+  "main": "build.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "fast-xml-parser": "^4.3.4"
+  }
+}
