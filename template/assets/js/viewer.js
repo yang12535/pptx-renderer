@@ -241,8 +241,10 @@
   }
 
   function onKeyDown(e) {
-    // 忽略输入框内按键
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // 忽略输入框、文本区、按钮上的按键，避免覆盖控件原生行为
+    var tag = e.target.tagName;
+    var role = e.target.getAttribute('role');
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || role === 'button') return;
 
     switch (e.key) {
       case 'ArrowRight':

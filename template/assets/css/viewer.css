@@ -345,4 +345,9 @@ html, body {
     transition: none !important;
     animation: none !important;
   }
+  /* 动画被禁用后，强制显示当前幻灯片内的所有元素 */
+  .slide.active .p-el {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }

@@ -13,6 +13,26 @@ const ENTRANCE_ANIMS = [
   'anim-zoomIn',
 ];
 
+// 已经带有 transform 的元素（旋转、翻转、线条）只能使用不冲突的动画
+const SAFE_ANIM = 'anim-fadeIn';
+
+function elementHasTransform(el) {
+  const xf = el.xfrm;
+  if (!xf) return false;
+  // 旋转、水平翻转、垂直翻转
+  if (xf.rotation || xf.flipH || xf.flipV) return true;
+  // 线条/connector 在 renderLine 中会附加 rotate transform
+  if (el.type === 'connector') return true;
+  if (el.geometry && el.geometry.name === 'line') return true;
+  // 宽高极扁的也按线条处理
+  if (xf.width && xf.height && Math.min(xf.width, xf.height) < 2) return true;
+  return false;
+}
+
+function pickAnimClass(el, index) {
+  return elementHasTransform(el) ? SAFE_ANIM : ENTRANCE_ANIMS[index % ENTRANCE_ANIMS.length];
+}
+
 function renderSlides(slides, presMeta) {
   const { widthEmu, heightEmu } = presMeta;
   const slideW = emuToPx(widthEmu);
@@ -42,7 +62,7 @@ function renderElement(el, index) {
   if (!xf) return '';
 
   const style = buildBaseStyle(xf);
-  const animClass = ENTRANCE_ANIMS[index % ENTRANCE_ANIMS.length];
+  const animClass = pickAnimClass(el, index);
   const animDelay = index * 100; // 每个元素错峰 100ms
 
   if (el.type === 'image' && el.src) {
