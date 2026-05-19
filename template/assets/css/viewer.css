@@ -1,0 +1,352 @@
+/* =========================================
+   PPTX Viewer — 静态幻灯片查看器样式
+   ========================================= */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ── Stage（幻灯片舞台）── */
+#stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* 幻灯片容器：按比例缩放 */
+#stage-inner {
+  position: relative;
+  box-shadow: 0 16px 64px rgba(0,0,0,0.6);
+  background: #fff;
+  transform-origin: center center;
+  transition: transform 0.3s ease;
+}
+
+/* ── Slide（单张幻灯片）── */
+.slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+              transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.slide.active {
+  opacity: 1;
+  pointer-events: all;
+  z-index: 1;
+}
+
+/* 切换方向类 */
+.slide.enter-right {
+  transform: translateX(60px);
+}
+.slide.enter-left {
+  transform: translateX(-60px);
+}
+.slide.enter-up {
+  transform: translateY(40px);
+}
+.slide.enter-down {
+  transform: translateY(-40px);
+}
+.slide.enter-zoom {
+  transform: scale(0.92);
+}
+
+.slide.active.enter-right,
+.slide.active.enter-left,
+.slide.active.enter-up,
+.slide.active.enter-down {
+  transform: translate(0, 0);
+}
+.slide.active.enter-zoom {
+  transform: scale(1);
+}
+
+/* ── 幻灯片元素 ── */
+.p-el {
+  position: absolute;
+  overflow: hidden;
+}
+
+.p-shape {
+  overflow: hidden;
+}
+
+.p-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.p-placeholder {
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 文本框 ── */
+.p-txBody {
+  width: 100%;
+  height: 100%;
+}
+
+.p-txBody p {
+  margin: 0;
+}
+
+/* ── 元素入场动画 ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes growIn {
+  from { opacity: 0; transform: scaleY(0); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+
+@keyframes expandRight {
+  from { opacity: 0; transform: scaleX(0); transform-origin: left center; }
+  to   { opacity: 1; transform: scaleX(1); transform-origin: left center; }
+}
+
+/* 幻灯片激活时，子元素触发动画 */
+.slide .p-el {
+  opacity: 0;
+  animation-fill-mode: both;
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+  animation-play-state: paused;
+}
+
+.slide.active .p-el {
+  animation-play-state: running;
+}
+
+.anim-fadeIn    { animation-name: fadeIn; }
+.anim-slideInUp { animation-name: slideInUp; }
+.anim-slideInLeft  { animation-name: slideInLeft; }
+.anim-slideInRight { animation-name: slideInRight; }
+.anim-zoomIn    { animation-name: zoomIn; }
+.anim-growIn    { animation-name: growIn; transform-origin: bottom center; }
+.anim-expandRight { animation-name: expandRight; transform-origin: left center; }
+
+/* ── 控制栏 ── */
+#controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 14px;
+  user-select: none;
+  transition: opacity 0.3s ease;
+}
+
+#controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#controls button {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+#controls button:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+#controls button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+#progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.6);
+  transition: width 0.3s ease;
+}
+
+/* ── 页码 & 信息 ── */
+#page-info {
+  min-width: 80px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-fullscreen {
+  padding: 6px 12px;
+}
+
+/* ── 缩略图栏（默认隐藏，hover 或快捷键触发）── */
+#thumbnails {
+  position: fixed;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 99;
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  max-width: 90vw;
+  overflow-x: auto;
+}
+
+#thumbnails.visible {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateX(-50%) translateY(0);
+}
+
+.thumb {
+  width: 120px;
+  height: 68px;
+  border-radius: 4px;
+  background: #333;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.thumb.active {
+  border-color: #4dabf7;
+}
+
+.thumb:hover {
+  border-color: rgba(255,255,255,0.4);
+}
+
+.thumb-inner {
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+}
+
+/* ── 提示 toast ── */
+#toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  z-index: 200;
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+#toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── 响应式：小屏幕 ── */
+@media (max-width: 768px) {
+  #controls {
+    padding: 10px 14px;
+    gap: 10px;
+    font-size: 13px;
+  }
+  #controls button {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+  .thumb {
+    width: 90px;
+    height: 51px;
+  }
+}
+
+/* ── 减少动画偏好 ── */
+@media (prefers-reduced-motion: reduce) {
+  .slide,
+  .slide .p-el,
+  #stage-inner,
+  #controls,
+  #thumbnails,
+  #toast {
+    transition: none !important;
+    animation: none !important;
+  }
+  /* 动画被禁用后，强制显示当前幻灯片内的所有元素 */
+  .slide.active .p-el {
+    opacity: 1 !important;
+  }
+}

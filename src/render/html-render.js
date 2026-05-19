@@ -1,19 +1,46 @@
-const { emuToPx, angleToDegrees } = require('../utils/units');
+const { emuToPx } = require('../utils/units');
 
 /**
- * 极简渲染器 —— 第一期只支持：
- * - 文本框（含段落、粗体、颜色、字体大小）
- * - 矩形、椭圆（CSS border-radius）
- * - 图片（img 标签）
- * - 直线（div + rotate）
- * 
- * 不支持：复杂路径、渐变、阴影、3D、图表、表格、SmartArt
+ * 渲染器 —— 生成幻灯片 HTML 片段
+ * 输出注入到 template/index.html 的 #stage-inner 中
  */
 
+const ENTRANCE_ANIMS = [
+  'anim-fadeIn',
+  'anim-slideInUp',
+  'anim-slideInLeft',
+  'anim-slideInRight',
+  'anim-zoomIn',
+];
+
+// 已经带有 transform 的元素（旋转、翻转、线条）只能使用不冲突的动画
+const SAFE_ANIM = 'anim-fadeIn';
+
+function elementHasTransform(el) {
+  const xf = el.xfrm;
+  if (!xf) return false;
+  // 旋转、水平翻转、垂直翻转
+  if (xf.rotation || xf.flipH || xf.flipV) return true;
+  // 线条/connector 在 renderLine 中会附加 rotate transform
+  if (el.type === 'connector') return true;
+  if (el.geometry && el.geometry.name === 'line') return true;
+  // 宽高极扁的也按线条处理（允许 width 或 height 为 0）
+  if (typeof xf.width === 'number' && typeof xf.height === 'number' && Math.min(xf.width, xf.height) < 2) return true;
+  return false;
+}
+
+function pickAnimClass(el, index) {
+  return elementHasTransform(el) ? SAFE_ANIM : ENTRANCE_ANIMS[index % ENTRANCE_ANIMS.length];
+}
+
 function renderSlides(slides, presMeta) {
-  const { widthEmu, heightEmu } = presMeta;
-  const slideW = emuToPx(widthEmu);
-  const slideH = emuToPx(heightEmu);
+  const { widthEmu, heightEmu, roundSize } = presMeta;
+  let slideW = emuToPx(widthEmu);
+  let slideH = emuToPx(heightEmu);
+  if (roundSize) {
+    slideW = Math.round(slideW);
+    slideH = Math.round(slideH);
+  }
 
   return slides.map((slide, idx) => renderSlide(slide, idx, slideW, slideH)).join('\n');
 }
@@ -23,33 +50,35 @@ function renderSlide(slide, index, w, h) {
     ? `background:${slide.background.color};`
     : 'background:#fff;';
 
-  let html = `<div class="slide" data-index="${index}" style="width:${w}px;height:${h}px;${bgStyle}">\n`;
+  let html = `  <div class="slide" data-index="${index}" style="width:${w}px;height:${h}px;${bgStyle}">\n`;
 
-  for (const el of slide.elements) {
-    const elHtml = renderElement(el);
-    if (elHtml) html += '  ' + elHtml + '\n';
-  }
+  slide.elements.forEach((el, elIdx) => {
+    const elHtml = renderElement(el, elIdx);
+    if (elHtml) html += '    ' + elHtml + '\n';
+  });
 
-  html += '</div>';
+  html += '  </div>';
   return html;
 }
 
-function renderElement(el) {
+function renderElement(el, index) {
   const xf = el.xfrm;
   if (!xf) return '';
 
   const style = buildBaseStyle(xf);
+  const animClass = pickAnimClass(el, index);
+  const animDelay = index * 100; // 每个元素错峰 100ms
 
   if (el.type === 'image' && el.src) {
-    return `<img class="p-el p-img" src="${escapeHtml(el.src)}" style="${style}" alt="">`;
+    const fullStyle = style + `animation-delay:${animDelay}ms;`;
+    return `<img class="p-el p-img ${animClass}" src="${escapeHtml(el.src)}" style="${fullStyle}" alt="">`;
   }
 
   if (el.type === 'shape' || el.type === 'connector') {
-    // 直线判断：connector 类型，或 prst=line，或宽高极扁
     const isLineShape = el.geometry && el.geometry.name === 'line';
     const isThin = Math.min(xf.width, xf.height) < 2;
     if (el.type === 'connector' || isLineShape || isThin) {
-      return renderLine(el, style);
+      return renderLine(el, animClass, animDelay);
     }
 
     let shapeStyle = style;
@@ -57,40 +86,41 @@ function renderElement(el) {
     const lineCss = buildLineCss(el);
     const shapeCss = buildShapeCss(el);
     shapeStyle += fillCss + lineCss + shapeCss;
+    shapeStyle += `animation-delay:${animDelay}ms;`;
 
     let inner = '';
     if (el.text && el.text.paragraphs.length > 0) {
       inner = renderText(el.text);
     }
 
-    return `<div class="p-el p-shape" style="${shapeStyle}">${inner}</div>`;
+    return `<div class="p-el p-shape ${animClass}" style="${shapeStyle}">${inner}</div>`;
   }
 
-  // graphicFrame / table / chart：第一期用占位矩形
   if (el.type === 'graphicFrame') {
-    return `<div class="p-el p-placeholder" style="${style}background:#f0f0f0;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:12px;color:#999;">[${el.subType || 'graphic'}]</div>`;
+    const fullStyle = style + `background:#f0f0f0;border:1px dashed #ccc;animation-delay:${animDelay}ms;`;
+    return `<div class="p-el p-placeholder ${animClass}" style="${fullStyle}">[${el.subType || 'graphic'}]</div>`;
   }
 
   return '';
 }
 
-function renderLine(el, baseStyle) {
+function renderLine(el, animClass, animDelay) {
   const xf = el.xfrm;
-  const line = el.line;
-  // 计算直线角度和长度
+  const line = el.line || { width: 1, color: '#000', dash: null };
   const dx = xf.width;
   const dy = xf.height;
   const length = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
   let style = `position:absolute;left:${xf.x}px;top:${xf.y}px;`;
-  style += `width:${length}px;height:${line.width || 1}px;`;
-  style += `background:${line.color || '#000'};`;
+  style += `width:${length}px;height:${line.width}px;`;
+  style += `background:${line.color};`;
   style += `transform:rotate(${angle}deg);transform-origin:0 0;`;
+  style += `animation-delay:${animDelay}ms;`;
   if (line.dash && line.dash !== 'solid') {
-    style += 'background:repeating-linear-gradient(90deg,' + (line.color || '#000') + ',' + (line.color || '#000') + ' 4px,transparent 4px,transparent 8px);';
+    style += 'background:repeating-linear-gradient(90deg,' + line.color + ',' + line.color + ' 4px,transparent 4px,transparent 8px);';
   }
-  return `<div class="p-el p-line" style="${style}"></div>`;
+  return `<div class="p-el p-line ${animClass}" style="${style}"></div>`;
 }
 
 function renderText(txBody) {
@@ -121,7 +151,7 @@ function renderText(txBody) {
 
     const bullet = para.bullet ? (para.bullet.char || '•') : '';
     if (bullet) {
-      html += `<span style="margin-right:6px;">${bullet}</span>`;
+      html += `<span style="margin-right:6px;">${escapeHtml(bullet)}</span>`;
     }
 
     for (const run of para.lines) {
@@ -164,7 +194,6 @@ function buildFillCss(el) {
   if (!el.fill) return 'background:transparent;';
   if (el.fill.type === 'none') return 'background:transparent;';
   if (el.fill.type === 'solid') return `background:${el.fill.color};`;
-  // 渐变：第一期简化，取第一个和最后一个颜色做线性渐变
   if (el.fill.type === 'gradient' && el.fill.stops && el.fill.stops.length >= 2) {
     const s1 = el.fill.stops[0];
     const s2 = el.fill.stops[el.fill.stops.length - 1];
@@ -182,7 +211,6 @@ function buildLineCss(el) {
   } else {
     s += `border:${line.width || 1}px solid transparent;`;
   }
-  // dash 暂用 border-style（仅对矩形有效）
   if (line.dash && line.dash !== 'solid') {
     s += 'border-style:dashed;';
   }
@@ -197,18 +225,15 @@ function buildShapeCss(el) {
       return 'border-radius:50%;';
     }
     if (name === 'roundRect') {
-      // 简化：固定圆角比例
       const adj = el.geometry.adjustments && el.geometry.adjustments.find(a => a.name === 'adj');
       const radius = adj ? Math.min(parseAdjVal(adj.fmla), 50000) / 50000 : 0.15;
       return `border-radius:${Math.round(radius * 100)}%;`;
     }
   }
-  // 自定义几何体：第一期不做，用矩形占位
   return '';
 }
 
 function parseAdjVal(fmla) {
-  // 形如 "val 5000"
   const m = /val\s+(\d+)/.exec(fmla);
   return m ? parseInt(m[1], 10) : 0;
 }

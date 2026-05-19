@@ -7,6 +7,11 @@ const { parseTheme } = require('./src/parser/theme');
 const { parseSlide } = require('./src/parser/slide');
 const { renderSlides } = require('./src/render/html-render');
 
+const PATHS = {
+  templateDir: path.join(__dirname, 'template'),
+  assetsDir: path.join(__dirname, 'template', 'assets'),
+};
+
 async function build(inputPptx, outDir) {
   console.log('🚀 Build started:', inputPptx);
 
@@ -23,7 +28,7 @@ async function build(inputPptx, outDir) {
   const pres = parsePresentation(tempDir);
   console.log('  Slides:', pres.slides.length, '| Size:', pres.widthEmu, 'x', pres.heightEmu, 'EMU');
 
-  // 3. 解析主题（取第一个）
+  // 3. 解析主题
   const themeDir = path.join(tempDir, 'ppt', 'theme');
   let theme = null;
   if (fs.existsSync(themeDir)) {
@@ -36,10 +41,10 @@ async function build(inputPptx, outDir) {
   // 4. 解析每张幻灯片
   const slidesDir = path.join(tempDir, 'ppt', 'slides');
   const slidesData = [];
+  const mediaOutDir = path.join(outDir, 'media');
 
   for (const sInfo of pres.slides) {
     const rId = sInfo.rId;
-    // 从 presentation.xml.rels 找 slide 路径
     const slideRelPath = path.join(tempDir, 'ppt', '_rels', 'presentation.xml.rels');
     const relsMap = parseRels(slideRelPath);
     const slideTarget = relsMap[rId];
@@ -52,9 +57,8 @@ async function build(inputPptx, outDir) {
     const slideRelsPath = path.join(tempDir, 'ppt', 'slides', '_rels', path.basename(slideTarget) + '.rels');
     const slideRelsMap = fs.existsSync(slideRelsPath) ? parseRels(slideRelsPath) : {};
 
-    // 转换 rels 路径为相对 dist 的路径（复制媒体资源）
+    // 转换 rels 路径并复制媒体资源
     const resolvedRels = {};
-    const mediaOutDir = path.join(outDir, 'media');
     for (const [rid, target] of Object.entries(slideRelsMap)) {
       if (target.startsWith('../media/')) {
         const src = path.join(tempDir, 'ppt', target.replace(/^\.\.\//, ''));
@@ -74,23 +78,36 @@ async function build(inputPptx, outDir) {
     if (slideObj) slidesData.push(slideObj);
   }
 
-  // 5. 渲染 HTML
-  const slidesHtml = renderSlides(slidesData, pres);
+  // 5. 渲染幻灯片 HTML 片段
+  const { emuToPx } = require('./src/utils/units');
+  const slideW = Math.round(emuToPx(pres.widthEmu));
+  const slideH = Math.round(emuToPx(pres.heightEmu));
+  const slidesHtml = renderSlides(slidesData, { widthEmu: pres.widthEmu, heightEmu: pres.heightEmu, roundSize: true });
 
-  // 6. 组装页面
-  const templateHtml = fs.readFileSync(path.join(__dirname, 'template', 'index.html'), 'utf-8');
-  const css = fs.readFileSync(path.join(__dirname, 'template', 'viewer.css'), 'utf-8');
+  // 6. 复制静态资源
+  copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));
+
+  // 7. 组装页面
+  const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
   const finalHtml = templateHtml
-    .replace('{{STYLE}}', css)
     .replace('{{SLIDES}}', slidesHtml)
-    .replace('{{SLIDE_COUNT}}', String(slidesData.length));
+    .replace('{{SLIDE_COUNT}}', String(slidesData.length))
+    .replace('{{SLIDE_WIDTH}}', String(slideW))
+    .replace('{{SLIDE_HEIGHT}}', String(slideH));
 
-  fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml);
+  fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
 
-  // 7. 清理临时文件
+  // 8. 清理临时文件
   fs.rmSync(tempDir, { recursive: true });
 
   console.log('✅ Build complete:', outDir);
+  console.log('   Output:');
+  console.log('   - index.html');
+  console.log('   - assets/css/viewer.css');
+  console.log('   - assets/js/viewer.js');
+  if (fs.existsSync(mediaOutDir)) {
+    console.log('   - media/ (' + fs.readdirSync(mediaOutDir).length + ' files)');
+  }
 }
 
 function parseRels(relsPath) {
@@ -106,10 +123,27 @@ function parseRels(relsPath) {
   return map;
 }
 
+function copyAssets(srcDir, dstDir) {
+  if (!fs.existsSync(srcDir)) return;
+  fs.mkdirSync(dstDir, { recursive: true });
+
+  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(srcDir, entry.name);
+    const dstPath = path.join(dstDir, entry.name);
+    if (entry.isDirectory()) {
+      copyAssets(srcPath, dstPath);
+    } else {
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
+}
+
 // CLI
 const input = process.argv[2] || 'test.pptx';
 const output = process.argv[3] || 'dist';
 build(input, output).catch(err => {
   console.error('❌ Build failed:', err.message);
+  console.error(err.stack);
   process.exit(1);
 });
