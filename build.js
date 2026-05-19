@@ -89,11 +89,18 @@ async function build(inputPptx, outDir) {
 
   // 7. 组装页面
   const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
-  const finalHtml = templateHtml
+  let finalHtml = templateHtml
     .replace('{{SLIDES}}', slidesHtml)
     .replace('{{SLIDE_COUNT}}', String(slidesData.length))
     .replace('{{SLIDE_WIDTH}}', String(slideW))
     .replace('{{SLIDE_HEIGHT}}', String(slideH));
+
+  if (slidesData.length > 0) {
+    finalHtml = finalHtml
+      .replace('<div id="upload-zone">', '<div id="upload-zone" class="hidden">')
+      .replace('<div id="stage" style="display:none;">', '<div id="stage">')
+      .replace('<div id="controls" style="display:none;">', '<div id="controls">');
+  }
 
   fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
 

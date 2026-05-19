@@ -93,7 +93,8 @@
 
 <!-- 幻灯片舞台 -->
 <div id="stage" style="display:none;">
-  <div id="stage-inner" data-width="960" data-height="540">
+  <div id="stage-inner" data-width="{{SLIDE_WIDTH}}" data-height="{{SLIDE_HEIGHT}}">
+    {{SLIDES}}
   </div>
 </div>
 
@@ -101,7 +102,7 @@
 <div id="controls" style="display:none;">
   <div id="progress-bar"></div>
   <button id="prev" aria-label="上一页">←</button>
-  <span id="page-info">1 / 1</span>
+  <span id="page-info">1 / {{SLIDE_COUNT}}</span>
   <button id="next" aria-label="下一页">→</button>
   <button id="btn-fullscreen" aria-label="全屏">全屏</button>
 </div>

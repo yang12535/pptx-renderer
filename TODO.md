@@ -61,11 +61,11 @@
 
 ## 🐛 已知 Bug
 
-- [ ] **下一页按钮点击无效** — 用户反馈：解析成功后幻灯片显示正常、动效很棒，但点击「→」或按键盘右箭头无法翻页。需排查：
-  - show() 函数是否正确切换 active 类
-  - CSS transition 是否覆盖导致 pointer-events 失效
-  - 控制栏是否被其他元素遮挡（z-index）
-  - btnNext 的 disabled 状态是否被错误设置
+- [x] **下一页按钮点击无效** — 已修复：上传页初始没有 `.slide`，`init()` 过早返回导致按钮、键盘、触摸等查看器事件没有绑定；现在事件会先一次性绑定，上传后只刷新幻灯片列表与 UI 状态。
+  - [x] `show()` 正确切换 active 类
+  - [x] 控制按钮事件在上传模式也会绑定
+  - [x] 键盘方向键不再被隐藏文件输入或按钮焦点误拦截
+  - [x] `btnNext` disabled 状态按真实总页数更新
 
 ---
 
@@ -95,4 +95,4 @@
 
 - [x] dist 目录可独立运行（双击 index.html 或 python http.server）
 - [x] 打包到 /home/yangtim/ls/pptx-renderer-dist.zip
-- [ ] 分支推送到 GitHub（feat/browser-upload）
+- [x] 分支推送到 GitHub（feat/browser-upload）

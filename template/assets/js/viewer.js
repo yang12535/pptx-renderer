@@ -24,6 +24,7 @@
   var touchStartY = 0;
   var controlsTimer = null;
   var thumbnailsBuilt = false;
+  var viewerEventsBound = false;
 
   // ── DOM 引用 ──
   var stage = document.getElementById('stage');
@@ -46,21 +47,29 @@
 
   // ── 初始化 ──
   function init() {
-    slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
-    total = slides.length;
+    bindEvents();
+    refreshSlides();
     if (total === 0) return;
 
-    bindEvents();
     applyAutoScale();
     show(0, 0);
   }
 
-  function reinit() {
+  function refreshSlides() {
     slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
     total = slides.length;
+  }
+
+  function reinit() {
+    bindEvents();
+    refreshSlides();
     current = 0;
     thumbnailsBuilt = false;
-    thumbnails.innerHTML = '';
+    if (thumbnails) thumbnails.innerHTML = '';
+    if (total === 0) {
+      updateUI();
+      return;
+    }
     updateUI();
     applyAutoScale();
     show(0, 0);
@@ -113,6 +122,7 @@
       stage.style.display = '';
       controls.style.display = '';
 
+      if (fileInput) fileInput.blur();
       reinit();
     }).catch(function (err) {
       uploadLoading.classList.remove('visible');
@@ -191,13 +201,13 @@
   // ── UI 更新 ──
   function updateUI() {
     if (pageInfo) {
-      pageInfo.textContent = (current + 1) + ' / ' + total;
+      pageInfo.textContent = total ? (current + 1) + ' / ' + total : '0 / 0';
     }
     if (progressBar) {
-      progressBar.style.width = ((current + 1) / total * 100) + '%';
+      progressBar.style.width = (total ? ((current + 1) / total * 100) : 0) + '%';
     }
-    if (btnPrev) btnPrev.disabled = current === 0;
-    if (btnNext) btnNext.disabled = current === total - 1;
+    if (btnPrev) btnPrev.disabled = total <= 1 || current === 0;
+    if (btnNext) btnNext.disabled = total <= 1 || current >= total - 1;
 
     // 更新缩略图高亮
     if (thumbnails) {
@@ -210,7 +220,7 @@
 
   // ── 自动缩放 ──
   function applyAutoScale() {
-    if (!CONFIG.autoScale || !stageInner) return;
+    if (!CONFIG.autoScale || !stage || !stageInner) return;
 
     var nativeW = parseInt(stageInner.dataset.width || '960', 10);
     var nativeH = parseInt(stageInner.dataset.height || '540', 10);
@@ -313,6 +323,9 @@
 
   // ── 事件绑定 ──
   function bindEvents() {
+    if (viewerEventsBound) return;
+    viewerEventsBound = true;
+
     // 按钮
     if (btnPrev) btnPrev.addEventListener('click', prev);
     if (btnNext) btnNext.addEventListener('click', next);
@@ -322,8 +335,10 @@
     document.addEventListener('keydown', onKeyDown);
 
     // 触摸
-    stage.addEventListener('touchstart', onTouchStart, { passive: true });
-    stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    if (stage) {
+      stage.addEventListener('touchstart', onTouchStart, { passive: true });
+      stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    }
 
     // 全屏变化
     document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -337,10 +352,7 @@
   }
 
   function onKeyDown(e) {
-    // 忽略输入框、文本区、按钮上的按键，避免覆盖控件原生行为
-    var tag = e.target.tagName;
-    var role = e.target.getAttribute('role');
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || role === 'button') return;
+    if (shouldIgnoreKey(e)) return;
 
     switch (e.key) {
       case 'ArrowRight':
@@ -376,6 +388,26 @@
         if (thumbnails) thumbnails.classList.remove('visible');
         break;
     }
+  }
+
+  function shouldIgnoreKey(e) {
+    var target = e.target;
+    if (!target || !target.tagName) return false;
+    var tag = target.tagName;
+    var role = target.getAttribute('role');
+
+    if (target.isContentEditable || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if ((tag === 'BUTTON' || role === 'button') && (e.key === ' ' || e.key === 'Enter')) return true;
+    if (tag !== 'INPUT') return false;
+
+    var type = (target.type || '').toLowerCase();
+    return type !== 'button' &&
+      type !== 'submit' &&
+      type !== 'reset' &&
+      type !== 'checkbox' &&
+      type !== 'radio' &&
+      type !== 'file' &&
+      type !== 'hidden';
   }
 
   function onTouchStart(e) {
