@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-rich/
+test_temp/
+test_rich_temp/
+*.pptx
+!test.pptx
+!test-rich.pptx
+test_img.png
