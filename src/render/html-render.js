@@ -1,4 +1,4 @@
-const { emuToPx, angleToDegrees } = require('../utils/units');
+const { emuToPx } = require('../utils/units');
 
 /**
  * 渲染器 —— 生成幻灯片 HTML 片段
@@ -78,7 +78,7 @@ function renderElement(el, index) {
     const isLineShape = el.geometry && el.geometry.name === 'line';
     const isThin = Math.min(xf.width, xf.height) < 2;
     if (el.type === 'connector' || isLineShape || isThin) {
-      return renderLine(el, style, animClass, animDelay);
+      return renderLine(el, animClass, animDelay);
     }
 
     let shapeStyle = style;
@@ -104,7 +104,7 @@ function renderElement(el, index) {
   return '';
 }
 
-function renderLine(el, baseStyle, animClass, animDelay) {
+function renderLine(el, animClass, animDelay) {
   const xf = el.xfrm;
   const line = el.line || { width: 1, color: '#000', dash: null };
   const dx = xf.width;

@@ -140,7 +140,8 @@
     if (!nativeW || !nativeH) return;
 
     var stageW = stage.clientWidth - CONFIG.scalePadding * 2;
-    var stageH = stage.clientHeight - CONFIG.scalePadding * 2 - 60; // 留控制栏空间
+    var controlsH = controls ? controls.offsetHeight : 60;
+    var stageH = stage.clientHeight - CONFIG.scalePadding * 2 - controlsH;
     var scaleX = stageW / nativeW;
     var scaleY = stageH / nativeH;
     var scale = Math.min(scaleX, scaleY, CONFIG.maxScale);
