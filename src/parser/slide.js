@@ -1,5 +1,5 @@
 const { parseXml, child, toArray } = require('../core/xml');
-const { parseShape, parsePicture, parseGraphicFrame, parseCxnSp } = require('./shape');
+const { parseShape, parsePicture, parseGraphicFrame, parseCxnSp, parseChartXml } = require('./shape');
 const fs = require('fs');
 const path = require('path');
 
@@ -45,6 +45,21 @@ function parseSlide(slidePath, theme, relsMap) {
         continue;
       }
       if (el) slideObj.elements.push(el);
+    }
+  }
+
+  // 解析图表
+  for (const el of slideObj.elements) {
+    if (el.type === 'graphicFrame' && el.chartRelId && relsMap[el.chartRelId]) {
+      const chartPath = path.resolve(path.dirname(slidePath), relsMap[el.chartRelId]);
+      if (fs.existsSync(chartPath)) {
+        try {
+          const chartXml = fs.readFileSync(chartPath, 'utf-8');
+          el.chartData = parseChartXml(chartXml);
+        } catch (e) {
+          el.chartData = null;
+        }
+      }
     }
   }
 

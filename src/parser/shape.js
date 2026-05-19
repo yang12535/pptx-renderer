@@ -1,4 +1,4 @@
-const { child, toArray } = require('../core/xml');
+const { parseXml, child, toArray } = require('../core/xml');
 const { emuToPx, angleToDegrees, fontSizeToPt } = require('../utils/units');
 const { colorToCss } = require('./color');
 
@@ -324,15 +324,21 @@ function parseGraphicFrame(gf, theme, relsMap) {
   if (chart) subType = 'chart';
   if (tbl) subType = 'table';
 
-  return {
+  const result = {
     type: 'graphicFrame',
     subType,
     uri,
     xfrm,
     id: null,
     name: '',
-    // chart/table 详细数据后续按需解析
   };
+  if (chart && (chart['r:id'] || chart['_r:id'])) {
+    result.chartRelId = chart['r:id'] || chart['_r:id'];
+  }
+  if (tbl) {
+    result.tableData = parseTableData(tbl);
+  }
+  return result;
 }
 
 function parseCxnSp(cxnSp, theme) {
@@ -357,6 +363,122 @@ function parseCxnSp(cxnSp, theme) {
   return shape;
 }
 
+function parseTableData(tblObj) {
+  const rows = [];
+  const trList = toArray(child(tblObj, 'tr') || tblObj['a:tr']);
+  for (const tr of trList) {
+    const cells = [];
+    const tcList = toArray(child(tr, 'tc') || tr['a:tc']);
+    for (const tc of tcList) {
+      let text = '';
+      const txBody = child(tc, 'txBody') || tc['a:txBody'];
+      if (txBody) {
+        const pList = toArray(child(txBody, 'p') || txBody['a:p']);
+        for (const para of pList) {
+          const rList = toArray(child(para, 'r') || para['a:r']);
+          for (const run of rList) {
+            const t = child(run, 't') || run['a:t'];
+            if (typeof t === 'string') text += t;
+            else if (t && t['#text']) text += t['#text'];
+          }
+        }
+      }
+      cells.push({ text });
+    }
+    rows.push({ cells });
+  }
+  return { rows };
+}
+
+function parseChartXml(xmlStr) {
+  const doc = parseXml(xmlStr);
+  const chartSpace = child(doc, 'chartSpace') || doc['c:chartSpace'] || doc;
+  const chart = child(chartSpace, 'chart') || chartSpace['c:chart'];
+  if (!chart) return null;
+  const plotArea = child(chart, 'plotArea') || chart['c:plotArea'];
+  if (!plotArea) return null;
+
+  let chartType = null;
+  let chartNode = null;
+  const typeKeys = ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart', 'doughnutChart', 'radarChart', 'stockChart', 'surfaceChart'];
+  for (const tk of typeKeys) {
+    const node = child(plotArea, tk) || plotArea['c:' + tk];
+    if (node) { chartType = tk; chartNode = node; break; }
+  }
+  if (!chartType) return null;
+
+  let barDir = null;
+  if (chartType === 'barChart') {
+    const bd = child(chartNode, 'barDir') || chartNode['c:barDir'];
+    barDir = bd ? bd._val : 'col';
+  }
+
+  let grouping = null;
+  const grp = child(chartNode, 'grouping') || chartNode['c:grouping'];
+  if (grp) grouping = grp._val;
+
+  let title = '';
+  const titleNode = child(chart, 'title') || chart['c:title'];
+  if (titleNode) {
+    const tx = child(titleNode, 'tx') || titleNode['c:tx'];
+    const rich = tx && (child(tx, 'rich') || tx['a:rich']);
+    const p = rich && (child(rich, 'p') || rich['a:p']);
+    if (p) {
+      const r = child(p, 'r') || p['a:r'];
+      const t = r && (child(r, 't') || r['a:t']);
+      if (typeof t === 'string') title = t;
+      else if (t && t['#text']) title = t['#text'];
+    }
+  }
+
+  function extractText(node) {
+    if (!node) return '';
+    const v = child(node, 'v') || node['c:v'];
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    if (v && v['#text']) return v['#text'];
+    return '';
+  }
+
+  const seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
+  const series = [];
+  for (const ser of seriesList) {
+    let sName = '';
+    const tx = child(ser, 'tx') || ser['c:tx'];
+    if (tx) {
+      const strRef = child(tx, 'strRef') || tx['c:strRef'];
+      const strCache = strRef && (child(strRef, 'strCache') || strRef['c:strCache']);
+      const pt = strCache && (child(strCache, 'pt') || strCache['c:pt']);
+      if (pt) sName = extractText(pt);
+    }
+
+    const categories = [];
+    const cat = child(ser, 'cat') || ser['c:cat'];
+    if (cat) {
+      const catRef = child(cat, 'strRef') || cat['c:strRef'] || child(cat, 'numRef') || cat['c:numRef'];
+      const catCache = catRef && (child(catRef, 'strCache') || catRef['c:strCache'] || child(catRef, 'numCache') || catRef['c:numCache']);
+      const catPts = catCache ? toArray(child(catCache, 'pt') || catCache['c:pt']) : [];
+      for (const cp of catPts) categories.push(extractText(cp));
+    }
+
+    const values = [];
+    const val = child(ser, 'val') || ser['c:val'];
+    if (val) {
+      const valRef = child(val, 'numRef') || val['c:numRef'] || child(val, 'strRef') || val['c:strRef'];
+      const valCache = valRef && (child(valRef, 'numCache') || valRef['c:numCache'] || child(valRef, 'strCache') || valRef['c:strCache']);
+      const valPts = valCache ? toArray(child(valCache, 'pt') || valCache['c:pt']) : [];
+      for (const vp of valPts) {
+        const num = parseFloat(extractText(vp));
+        values.push(isNaN(num) ? 0 : num);
+      }
+    }
+
+    series.push({ name: sName, categories, values });
+  }
+
+  return { title, chartType, barDir, grouping, series };
+}
+
 module.exports = {
   parseShape,
   parsePicture,
@@ -365,4 +487,5 @@ module.exports = {
   parseXfrm,
   parseSpPr,
   parseTxBody,
+  parseChartXml,
 };

@@ -172,6 +172,7 @@
 
     // 更新 UI
     updateUI();
+    initCharts(nextSlide);
   }
 
   function next() {
@@ -218,6 +219,91 @@
     }
   }
 
+  // ── ECharts 图表 ──
+  function initCharts(slideEl) {
+    if (typeof echarts === 'undefined') return;
+    var charts = slideEl.querySelectorAll('.p-chart');
+    charts.forEach(function(container) {
+      if (container._echartsInstance) return;
+      var dataStr = container.getAttribute('data-chart');
+      if (!dataStr) return;
+      try {
+        var data = JSON.parse(dataStr);
+        var option = buildEchartsOption(data);
+        var instance = echarts.init(container);
+        instance.setOption(option);
+        container._echartsInstance = instance;
+      } catch (e) {
+        console.error('ECharts init error:', e);
+      }
+    });
+  }
+
+  function buildEchartsOption(data) {
+    var option = {
+      animation: false,
+      title: data.title ? { text: data.title, left: 'center', textStyle: { fontSize: 14 } } : undefined,
+      tooltip: { trigger: data.chartType === 'pieChart' ? 'item' : 'axis' },
+      legend: data.series.length > 1 ? { bottom: 0, textStyle: { fontSize: 10 } } : undefined,
+      grid: { left: '10%', right: '10%', bottom: '15%', top: '15%', containLabel: true },
+    };
+
+    var series = [];
+    var categories = (data.series[0] && data.series[0].categories) || [];
+
+    if (data.chartType === 'pieChart') {
+      var pieData = [];
+      if (data.series[0]) {
+        for (var i = 0; i < data.series[0].categories.length; i++) {
+          pieData.push({ name: data.series[0].categories[i], value: data.series[0].values[i] || 0 });
+        }
+      }
+      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 10 } }];
+      option.xAxis = undefined;
+      option.yAxis = undefined;
+    } else if (data.chartType === 'barChart' && data.barDir === 'bar') {
+      option.xAxis = { type: 'value' };
+      option.yAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
+      for (var i = 0; i < data.series.length; i++) {
+        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+      }
+      option.series = series;
+    } else if (data.chartType === 'barChart' && data.barDir === 'col') {
+      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
+      option.yAxis = { type: 'value' };
+      for (var i = 0; i < data.series.length; i++) {
+        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+      }
+      option.series = series;
+    } else if (data.chartType === 'lineChart') {
+      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
+      option.yAxis = { type: 'value' };
+      for (var i = 0; i < data.series.length; i++) {
+        series.push({ name: data.series[i].name, type: 'line', data: data.series[i].values, smooth: false });
+      }
+      option.series = series;
+    } else {
+      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
+      option.yAxis = { type: 'value' };
+      for (var i = 0; i < data.series.length; i++) {
+        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+      }
+      option.series = series;
+    }
+
+    return option;
+  }
+
+  function resizeCharts() {
+    if (typeof echarts === 'undefined') return;
+    slides.forEach(function(s) {
+      var charts = s.querySelectorAll('.p-chart');
+      charts.forEach(function(c) {
+        if (c._echartsInstance) c._echartsInstance.resize();
+      });
+    });
+  }
+
   // ── 自动缩放 ──
   function applyAutoScale() {
     if (!CONFIG.autoScale || !stage || !stageInner) return;
@@ -237,6 +323,7 @@
     stageInner.style.width = nativeW + 'px';
     stageInner.style.height = nativeH + 'px';
     stageInner.style.transform = 'scale(' + scale.toFixed(4) + ')';
+    resizeCharts();
   }
 
   // ── 缩略图 ──

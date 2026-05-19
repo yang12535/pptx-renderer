@@ -89,6 +89,21 @@
     return Array.isArray(val) ? val : [val];
   }
 
+  function resolveZipPath(basePath, relPath) {
+    if (relPath.charAt(0) === '/') return relPath.slice(1);
+    var parts = basePath.split('/');
+    parts.pop();
+    var relParts = relPath.split('/');
+    for (var i = 0; i < relParts.length; i++) {
+      if (relParts[i] === '..') {
+        parts.pop();
+      } else if (relParts[i] !== '.' && relParts[i] !== '') {
+        parts.push(relParts[i]);
+      }
+    }
+    return parts.join('/');
+  }
+
   // ==================== 单位转换 ====================
   function emuToPx(emu) {
     var n = typeof emu === 'string' ? parseInt(emu, 10) : emu;
@@ -446,7 +461,135 @@
     var chart = child(graphicData, 'chart') || graphicData['c:chart'];
     var tbl = child(graphicData, 'tbl') || graphicData['a:tbl'];
     var subType = chart ? 'chart' : (tbl ? 'table' : 'unknown');
-    return { type: 'graphicFrame', subType: subType, uri: uri, xfrm: xfrm, id: null, name: '' };
+    var result = { type: 'graphicFrame', subType: subType, uri: uri, xfrm: xfrm, id: null, name: '' };
+    if (chart && chart['_r:id']) {
+      result.chartRelId = chart['_r:id'];
+    }
+    if (tbl) {
+      result.tableData = parseTableData(tbl);
+    }
+    return result;
+  }
+
+  function parseTableData(tblObj) {
+    var rows = [];
+    var trList = toArray(child(tblObj, 'tr') || tblObj['a:tr']);
+    for (var r = 0; r < trList.length; r++) {
+      var tr = trList[r];
+      var cells = [];
+      var tcList = toArray(child(tr, 'tc') || tr['a:tc']);
+      for (var c = 0; c < tcList.length; c++) {
+        var tc = tcList[c];
+        var text = '';
+        var txBody = child(tc, 'txBody') || tc['a:txBody'];
+        if (txBody) {
+          var pList = toArray(child(txBody, 'p') || txBody['a:p']);
+          for (var p = 0; p < pList.length; p++) {
+            var para = pList[p];
+            var rList = toArray(child(para, 'r') || para['a:r']);
+            for (var ri = 0; ri < rList.length; ri++) {
+              var run = rList[ri];
+              var t = child(run, 't') || run['a:t'];
+              if (typeof t === 'string') text += t;
+              else if (t && t['#text']) text += t['#text'];
+            }
+          }
+        }
+        cells.push({ text: text });
+      }
+      rows.push({ cells: cells });
+    }
+    return { rows: rows };
+  }
+
+  function parseChartXml(xmlStr) {
+    var doc = parseXml(xmlStr);
+    var chartSpace = child(doc, 'chartSpace') || doc['c:chartSpace'] || doc;
+    var chart = child(chartSpace, 'chart') || chartSpace['c:chart'];
+    if (!chart) return null;
+    var plotArea = child(chart, 'plotArea') || chart['c:plotArea'];
+    if (!plotArea) return null;
+
+    var chartType = null;
+    var chartNode = null;
+    var typeKeys = ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart', 'doughnutChart', 'radarChart', 'stockChart', 'surfaceChart'];
+    for (var i = 0; i < typeKeys.length; i++) {
+      var node = child(plotArea, typeKeys[i]) || plotArea['c:' + typeKeys[i]];
+      if (node) { chartType = typeKeys[i]; chartNode = node; break; }
+    }
+    if (!chartType) return null;
+
+    var barDir = null;
+    if (chartType === 'barChart') {
+      var bd = child(chartNode, 'barDir') || chartNode['c:barDir'];
+      barDir = bd ? bd._val : 'col';
+    }
+
+    var grouping = null;
+    var grp = child(chartNode, 'grouping') || chartNode['c:grouping'];
+    if (grp) grouping = grp._val;
+
+    var title = '';
+    var titleNode = child(chart, 'title') || chart['c:title'];
+    if (titleNode) {
+      var tx = child(titleNode, 'tx') || titleNode['c:tx'];
+      var rich = tx && (child(tx, 'rich') || tx['a:rich']);
+      var p = rich && (child(rich, 'p') || rich['a:p']);
+      if (p) {
+        var r = child(p, 'r') || p['a:r'];
+        var t = r && (child(r, 't') || r['a:t']);
+        if (typeof t === 'string') title = t;
+        else if (t && t['#text']) title = t['#text'];
+      }
+    }
+
+    function extractText(node) {
+      if (!node) return '';
+      var v = child(node, 'v') || node['c:v'];
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number') return String(v);
+      if (v && v['#text']) return v['#text'];
+      return '';
+    }
+
+    var seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
+    var series = [];
+    for (var s = 0; s < seriesList.length; s++) {
+      var ser = seriesList[s];
+      var sName = '';
+      var tx = child(ser, 'tx') || ser['c:tx'];
+      if (tx) {
+        var strRef = child(tx, 'strRef') || tx['c:strRef'];
+        var strCache = strRef && (child(strRef, 'strCache') || strRef['c:strCache']);
+        var pt = strCache && (child(strCache, 'pt') || strCache['c:pt']);
+        if (pt) sName = extractText(pt);
+      }
+
+      var categories = [];
+      var cat = child(ser, 'cat') || ser['c:cat'];
+      if (cat) {
+        var catRef = child(cat, 'strRef') || cat['c:strRef'] || child(cat, 'numRef') || cat['c:numRef'];
+        var catCache = catRef && (child(catRef, 'strCache') || catRef['c:strCache'] || child(catRef, 'numCache') || catRef['c:numCache']);
+        var catPts = catCache ? toArray(child(catCache, 'pt') || catCache['c:pt']) : [];
+        for (var ci = 0; ci < catPts.length; ci++) categories.push(extractText(catPts[ci]));
+      }
+
+      var values = [];
+      var val = child(ser, 'val') || ser['c:val'];
+      if (val) {
+        var valRef = child(val, 'numRef') || val['c:numRef'] || child(val, 'strRef') || val['c:strRef'];
+        var valCache = valRef && (child(valRef, 'numCache') || valRef['c:numCache'] || child(valRef, 'strCache') || valRef['c:strCache']);
+        var valPts = valCache ? toArray(child(valCache, 'pt') || valCache['c:pt']) : [];
+        for (var vi = 0; vi < valPts.length; vi++) {
+          var num = parseFloat(extractText(valPts[vi]));
+          values.push(isNaN(num) ? 0 : num);
+        }
+      }
+
+      series.push({ name: sName, categories: categories, values: values });
+    }
+
+    return { title: title, chartType: chartType, barDir: barDir, grouping: grouping, series: series };
   }
 
   function parseCxnSp(cxnSp, theme) {
@@ -521,9 +664,34 @@
       return '<div class="p-el p-shape ' + animClass + '" style="' + shapeStyle + '">' + inner + '</div>';
     }
     if (el.type === 'graphicFrame') {
+      if (el.chartData) {
+        var chartJson = JSON.stringify(el.chartData).replace(/"/g, '&quot;');
+        var chartStyle = style + 'animation-delay:' + animDelay + 'ms;';
+        return '<div class="p-el p-chart ' + animClass + '" data-chart="' + chartJson + '" style="' + chartStyle + '"></div>';
+      }
+      if (el.tableData) {
+        var tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;">';
+        for (var ri = 0; ri < el.tableData.rows.length; ri++) {
+          tblHtml += '<tr>';
+          var row = el.tableData.rows[ri];
+          for (var ci = 0; ci < row.cells.length; ci++) {
+            var tag = ri === 0 ? 'th' : 'td';
+            tblHtml += '<' + tag + ' style="border:1px solid #ccc;padding:4px 8px;font-size:12px;background:' + (ri === 0 ? '#f5f5f5' : '#fff') + ';">' + escapeHtml(row.cells[ci].text) + '</' + tag + '>';
+          }
+          tblHtml += '</tr>';
+        }
+        tblHtml += '</table>';
+        var tblStyle = style + 'animation-delay:' + animDelay + 'ms;overflow:auto;';
+        return '<div class="p-el p-table-wrap ' + animClass + '" style="' + tblStyle + '">' + tblHtml + '</div>';
+      }
       return '<div class="p-el p-placeholder ' + animClass + '" style="' + style + 'background:#f0f0f0;border:1px dashed #ccc;animation-delay:' + animDelay + 'ms;">[' + (el.subType || 'graphic') + ']</div>';
     }
     return '';
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function renderLine(el, animClass, animDelay) {
@@ -704,7 +872,26 @@
                       }
                       var slideResult = parseSlide(slideXml, theme, finalRels);
                       console.log("[Parser] slide parsed, elements:", slideResult ? slideResult.elements.length : 0);
-                      return slideResult;
+                      if (!slideResult) return slideResult;
+                      var chartPromises = [];
+                      slideResult.elements.forEach(function(el) {
+                        if (el.type === 'graphicFrame' && el.chartRelId) {
+                          var chartPath = slideRels[el.chartRelId];
+                          if (chartPath) {
+                            chartPath = resolveZipPath(slidePath, chartPath);
+                            var chartFile = zip.file(chartPath);
+                            if (!chartFile) {
+                              console.warn('[Parser] chart file not found:', chartPath, 'relId:', el.chartRelId);
+                              return;
+                            }
+                            var cp = chartFile.async('string').then(function(chartXml) {
+                              el.chartData = parseChartXml(chartXml);
+                            }).catch(function() { el.chartData = null; });
+                            chartPromises.push(cp);
+                          }
+                        }
+                      });
+                      return Promise.all(chartPromises).then(function() { return slideResult; });
                     });
                   });
                 });

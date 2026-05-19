@@ -97,6 +97,26 @@ function renderElement(el, index) {
   }
 
   if (el.type === 'graphicFrame') {
+    if (el.chartData) {
+      const chartJson = JSON.stringify(el.chartData).replace(/"/g, '&quot;');
+      const chartStyle = style + `animation-delay:${animDelay}ms;`;
+      return `<div class="p-el p-chart ${animClass}" data-chart="${chartJson}" style="${chartStyle}"></div>`;
+    }
+    if (el.tableData) {
+      let tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;">';
+      for (let ri = 0; ri < el.tableData.rows.length; ri++) {
+        tblHtml += '<tr>';
+        const row = el.tableData.rows[ri];
+        for (let ci = 0; ci < row.cells.length; ci++) {
+          const tag = ri === 0 ? 'th' : 'td';
+          tblHtml += `<${tag} style="border:1px solid #ccc;padding:4px 8px;font-size:12px;background:${ri === 0 ? '#f5f5f5' : '#fff'};">${escapeHtml(row.cells[ci].text)}</${tag}>`;
+        }
+        tblHtml += '</tr>';
+      }
+      tblHtml += '</table>';
+      const tblStyle = style + `animation-delay:${animDelay}ms;overflow:auto;`;
+      return `<div class="p-el p-table-wrap ${animClass}" style="${tblStyle}">${tblHtml}</div>`;
+    }
     const fullStyle = style + `background:#f0f0f0;border:1px dashed #ccc;animation-delay:${animDelay}ms;`;
     return `<div class="p-el p-placeholder ${animClass}" style="${fullStyle}">[${el.subType || 'graphic'}]</div>`;
   }
