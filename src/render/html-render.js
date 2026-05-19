@@ -24,8 +24,8 @@ function elementHasTransform(el) {
   // 线条/connector 在 renderLine 中会附加 rotate transform
   if (el.type === 'connector') return true;
   if (el.geometry && el.geometry.name === 'line') return true;
-  // 宽高极扁的也按线条处理
-  if (xf.width && xf.height && Math.min(xf.width, xf.height) < 2) return true;
+  // 宽高极扁的也按线条处理（允许 width 或 height 为 0）
+  if (typeof xf.width === 'number' && typeof xf.height === 'number' && Math.min(xf.width, xf.height) < 2) return true;
   return false;
 }
 

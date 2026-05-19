@@ -196,6 +196,7 @@
 
   function toggleThumbnails() {
     if (!thumbnails) return;
+    buildThumbnails();
     thumbnails.classList.toggle('visible');
   }
 
