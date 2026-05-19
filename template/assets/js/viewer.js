@@ -37,6 +37,13 @@
   var thumbnails = document.getElementById('thumbnails');
   var toast = document.getElementById('toast');
 
+  // 上传区域
+  var uploadZone = document.getElementById('upload-zone');
+  var dropArea = document.getElementById('drop-area');
+  var fileInput = document.getElementById('file-input');
+  var uploadLoading = document.getElementById('upload-loading');
+  var uploadError = document.getElementById('upload-error');
+
   // ── 初始化 ──
   function init() {
     slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
@@ -46,6 +53,76 @@
     bindEvents();
     applyAutoScale();
     show(0, 0);
+  }
+
+  function reinit() {
+    slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
+    total = slides.length;
+    current = 0;
+    thumbnailsBuilt = false;
+    thumbnails.innerHTML = '';
+    updateUI();
+    applyAutoScale();
+    show(0, 0);
+  }
+
+  // ── 文件上传 ──
+  function bindUploadEvents() {
+    if (!dropArea || !fileInput) return;
+
+    dropArea.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function (e) {
+      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    dropArea.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', function () {
+      dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      var files = e.dataTransfer.files;
+      if (files && files[0]) handleFile(files[0]);
+    });
+  }
+
+  function handleFile(file) {
+    console.log('[Upload] file selected:', file.name, file.size);
+    if (!file.name.endsWith('.pptx')) {
+      showUploadError('请选择 .pptx 格式的文件');
+      return;
+    }
+    showUploadError('');
+    uploadLoading.classList.add('visible');
+
+    loadPptxFromFile(file).then(function (result) {
+      console.log('[Upload] parsed ok, slides:', result.slideCount, 'size:', result.slideW + 'x' + result.slideH);
+      uploadLoading.classList.remove('visible');
+
+      // 注入幻灯片
+      stageInner.innerHTML = result.slidesHtml;
+      stageInner.setAttribute('data-width', String(result.slideW));
+      stageInner.setAttribute('data-height', String(result.slideH));
+
+      // 切换视图
+      uploadZone.classList.add('hidden');
+      stage.style.display = '';
+      controls.style.display = '';
+
+      reinit();
+    }).catch(function (err) {
+      uploadLoading.classList.remove('visible');
+      showUploadError('解析失败: ' + (err.message || '未知错误'));
+      console.error('[Upload] parse error:', err);
+    });
+  }
+
+  function showUploadError(msg) {
+    if (uploadError) uploadError.textContent = msg;
   }
 
   // ── 幻灯片切换 ──
@@ -341,6 +418,8 @@
   }
 
   // ── 启动 ──
+  bindUploadEvents();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

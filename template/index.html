@@ -5,27 +5,112 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PPTX Viewer</title>
 <link rel="stylesheet" href="./assets/css/viewer.css">
+<style>
+/* 上传区域 */
+#upload-zone {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  flex-direction: column;
+  gap: 20px;
+}
+#upload-zone.hidden { display: none; }
+.drop-area {
+  width: 480px;
+  max-width: 90vw;
+  height: 280px;
+  border: 2px dashed rgba(255,255,255,0.25);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: rgba(255,255,255,0.7);
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+}
+.drop-area:hover, .drop-area.dragover {
+  border-color: #4dabf7;
+  background: rgba(77,171,247,0.08);
+}
+.drop-area svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.6;
+}
+.drop-area h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+.drop-area p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+#file-input { display: none; }
+#upload-error {
+  color: #ff6b6b;
+  font-size: 14px;
+  min-height: 20px;
+}
+#upload-loading {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255,255,255,0.7);
+}
+#upload-loading.visible { display: flex; }
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #4dabf7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body>
 
-<div id="stage">
-  <div id="stage-inner" data-width="{{SLIDE_WIDTH}}" data-height="{{SLIDE_HEIGHT}}">
-{{SLIDES}}
+<!-- 上传区域 -->
+<div id="upload-zone">
+  <div class="drop-area" id="drop-area">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <h2>打开 PPTX 文件</h2>
+    <p>点击选择或拖拽文件到此处</p>
+  </div>
+  <input type="file" id="file-input" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+  <div id="upload-loading"><div class="spinner"></div>正在解析...</div>
+  <div id="upload-error"></div>
+</div>
+
+<!-- 幻灯片舞台 -->
+<div id="stage" style="display:none;">
+  <div id="stage-inner" data-width="960" data-height="540">
   </div>
 </div>
 
-<div id="controls">
+<!-- 控制栏 -->
+<div id="controls" style="display:none;">
   <div id="progress-bar"></div>
   <button id="prev" aria-label="上一页">←</button>
-  <span id="page-info">1 / {{SLIDE_COUNT}}</span>
+  <span id="page-info">1 / 1</span>
   <button id="next" aria-label="下一页">→</button>
   <button id="btn-fullscreen" aria-label="全屏">全屏</button>
 </div>
 
 <div id="thumbnails" role="navigation" aria-label="幻灯片缩略图"></div>
-
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="./assets/vendor/jszip.min.js"></script>
+<script src="./assets/js/pptx-parser.js"></script>
 <script src="./assets/js/viewer.js"></script>
 </body>
 </html>
