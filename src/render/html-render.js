@@ -98,7 +98,7 @@ function renderElement(el, index) {
 
   if (el.type === 'graphicFrame') {
     if (el.chartData) {
-      const chartJson = JSON.stringify(el.chartData).replace(/"/g, '&quot;');
+      const chartJson = JSON.stringify(el.chartData).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       const chartStyle = style + `animation-delay:${animDelay}ms;`;
       return `<div class="p-el p-chart ${animClass}" data-chart="${chartJson}" style="${chartStyle}"></div>`;
     }
@@ -133,7 +133,8 @@ function renderTable(tableData, availableHeight) {
   for (let ri = 0; ri < tableData.rows.length; ri++) {
     const row = tableData.rows[ri];
     const rowHeight = row.height ? row.height * rowScale : null;
-    const rowStyle = rowHeight ? `height:${rowHeight}px;` : '';
+    const delay = (0.82 + ri * 0.06).toFixed(2);
+    const rowStyle = (rowHeight ? `height:${rowHeight}px;` : '') + `animation-delay:${delay}s;`;
     tblHtml += `<tr style="${rowStyle}">`;
     for (let ci = 0; ci < row.cells.length; ci++) {
       const tag = ri === 0 ? 'th' : 'td';

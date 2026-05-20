@@ -4,7 +4,8 @@
   "description": "Lightweight PPTX to static site generator",
   "main": "build.js",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "build:static": "node build.js --static"
   },
   "dependencies": {
     "adm-zip": "^0.5.10",

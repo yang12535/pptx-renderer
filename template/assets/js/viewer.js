@@ -50,8 +50,14 @@
   function init() {
     bindEvents();
     refreshSlides();
-    if (total === 0) return;
+    if (total === 0) {
+      if (stage) stage.style.display = 'none';
+      if (controls) controls.style.display = 'none';
+      return;
+    }
 
+    if (stage) stage.style.display = '';
+    if (controls) controls.style.display = '';
     applyAutoScale();
     show(0, 0);
   }

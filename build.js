@@ -13,12 +13,45 @@ const PATHS = {
   assetsDir: path.join(__dirname, 'template', 'assets'),
 };
 
-async function build(inputPptx, outDir) {
+async function buildUpload(outDir) {
+  outDir = path.resolve(outDir);
+  console.log('🚀 Build (upload mode):', outDir);
+
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true });
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+
+  copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));
+
+  const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
+  let finalHtml = replaceTemplateTokens(templateHtml, {
+    '{{SLIDES}}': '',
+    '{{SLIDE_COUNT}}': '0',
+    '{{SLIDE_WIDTH}}': '0',
+    '{{SLIDE_HEIGHT}}': '0',
+    '{{UPLOAD_ZONE_CLASS}}': '',
+    '{{STAGE_STYLE}}': 'display:none;',
+    '{{CONTROLS_STYLE}}': 'display:none;',
+  });
+
+  fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
+
+  console.log('✅ Upload mode build complete:', outDir);
+  console.log('   Output:');
+  console.log('   - index.html');
+  console.log('   - assets/css/viewer.css');
+  console.log('   - assets/js/viewer.js');
+  console.log('   - assets/js/pptx-parser.js');
+  console.log('   - assets/vendor/jszip.min.js');
+  console.log('   - assets/vendor/echarts.min.js');
+}
+
+async function buildStatic(inputPptx, outDir) {
   inputPptx = path.resolve(inputPptx);
   outDir = path.resolve(outDir);
-  console.log('🚀 Build started:', inputPptx);
+  console.log('🚀 Build (static mode):', inputPptx);
 
-  // 1. 清理 & 解压
   if (fs.existsSync(outDir)) {
     fs.rmSync(outDir, { recursive: true });
   }
@@ -26,94 +59,85 @@ async function build(inputPptx, outDir) {
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-renderer-'));
   try {
-  extractPptx(inputPptx, tempDir);
+    extractPptx(inputPptx, tempDir);
 
-  // 2. 解析演示文稿
-  const pres = parsePresentation(tempDir);
-  console.log('  Slides:', pres.slides.length, '| Size:', pres.widthEmu, 'x', pres.heightEmu, 'EMU');
+    const pres = parsePresentation(tempDir);
+    console.log('  Slides:', pres.slides.length, '| Size:', pres.widthEmu, 'x', pres.heightEmu, 'EMU');
 
-  // 3. 解析主题
-  const themeDir = path.join(tempDir, 'ppt', 'theme');
-  let theme = null;
-  if (fs.existsSync(themeDir)) {
-    const themeFiles = fs.readdirSync(themeDir).filter(f => f.endsWith('.xml'));
-    if (themeFiles.length > 0) {
-      theme = parseTheme(path.join(themeDir, themeFiles[0]));
-    }
-  }
-
-  // 4. 解析每张幻灯片
-  const slidesDir = path.join(tempDir, 'ppt', 'slides');
-  const slidesData = [];
-  const mediaOutDir = path.join(outDir, 'media');
-
-  for (const sInfo of pres.slides) {
-    const rId = sInfo.rId;
-    const slideRelPath = path.join(tempDir, 'ppt', '_rels', 'presentation.xml.rels');
-    const relsMap = parseRels(slideRelPath);
-    const slideTarget = relsMap[rId];
-    if (!slideTarget) {
-      console.warn('  ⚠️  Slide not found for rId:', rId);
-      continue;
-    }
-
-    const slidePath = path.join(tempDir, 'ppt', slideTarget);
-    const slideRelsPath = path.join(tempDir, 'ppt', 'slides', '_rels', path.basename(slideTarget) + '.rels');
-    const slideRelsMap = fs.existsSync(slideRelsPath) ? parseRels(slideRelsPath) : {};
-
-    // 转换 rels 路径并复制媒体资源
-    const resolvedRels = {};
-    for (const [rid, target] of Object.entries(slideRelsMap)) {
-      if (target.startsWith('../media/')) {
-        const src = path.join(tempDir, 'ppt', target.replace(/^\.\.\//, ''));
-        const dstName = path.basename(target);
-        const dst = path.join(mediaOutDir, dstName);
-        if (fs.existsSync(src)) {
-          if (!fs.existsSync(mediaOutDir)) fs.mkdirSync(mediaOutDir, { recursive: true });
-          fs.copyFileSync(src, dst);
-          resolvedRels[rid] = './media/' + dstName;
-        }
-      } else {
-        resolvedRels[rid] = resolveRelationshipTarget(slidePath, target, tempDir);
+    const themeDir = path.join(tempDir, 'ppt', 'theme');
+    let theme = null;
+    if (fs.existsSync(themeDir)) {
+      const themeFiles = fs.readdirSync(themeDir).filter(f => f.endsWith('.xml'));
+      if (themeFiles.length > 0) {
+        theme = parseTheme(path.join(themeDir, themeFiles[0]));
       }
     }
 
-    const slideObj = parseSlide(slidePath, theme, resolvedRels);
-    if (slideObj) slidesData.push(slideObj);
-  }
+    const slidesData = [];
+    const mediaOutDir = path.join(outDir, 'media');
 
-  // 5. 渲染幻灯片 HTML 片段
-  const { emuToPx } = require('./src/utils/units');
-  const slideW = Math.round(emuToPx(pres.widthEmu));
-  const slideH = Math.round(emuToPx(pres.heightEmu));
-  const slidesHtml = renderSlides(slidesData, { widthEmu: pres.widthEmu, heightEmu: pres.heightEmu, roundSize: true });
+    for (const sInfo of pres.slides) {
+      const rId = sInfo.rId;
+      const slideRelPath = path.join(tempDir, 'ppt', '_rels', 'presentation.xml.rels');
+      const relsMap = parseRels(slideRelPath);
+      const slideTarget = relsMap[rId];
+      if (!slideTarget) {
+        console.warn('  ⚠️  Slide not found for rId:', rId);
+        continue;
+      }
 
-  // 6. 复制静态资源
-  copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));
+      const slidePath = path.join(tempDir, 'ppt', slideTarget);
+      const slideRelsPath = path.join(tempDir, 'ppt', 'slides', '_rels', path.basename(slideTarget) + '.rels');
+      const slideRelsMap = fs.existsSync(slideRelsPath) ? parseRels(slideRelsPath) : {};
 
-  // 7. 组装页面
-  const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
-  const hasSlides = slidesData.length > 0;
-  let finalHtml = replaceTemplateTokens(templateHtml, {
-    '{{SLIDES}}': slidesHtml,
-    '{{SLIDE_COUNT}}': String(slidesData.length),
-    '{{SLIDE_WIDTH}}': String(slideW),
-    '{{SLIDE_HEIGHT}}': String(slideH),
-    '{{UPLOAD_ZONE_CLASS}}': hasSlides ? 'hidden' : '',
-    '{{STAGE_STYLE}}': hasSlides ? '' : 'display:none;',
-    '{{CONTROLS_STYLE}}': hasSlides ? '' : 'display:none;',
-  });
+      const resolvedRels = {};
+      for (const [rid, target] of Object.entries(slideRelsMap)) {
+        if (target.startsWith('../media/')) {
+          const src = path.join(tempDir, 'ppt', target.replace(/^\.\.\//, ''));
+          const dstName = path.basename(target);
+          const dst = path.join(mediaOutDir, dstName);
+          if (fs.existsSync(src)) {
+            if (!fs.existsSync(mediaOutDir)) fs.mkdirSync(mediaOutDir, { recursive: true });
+            fs.copyFileSync(src, dst);
+            resolvedRels[rid] = './media/' + dstName;
+          }
+        } else {
+          resolvedRels[rid] = resolveRelationshipTarget(slidePath, target, tempDir);
+        }
+      }
 
-  fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
+      const slideObj = parseSlide(slidePath, theme, resolvedRels);
+      if (slideObj) slidesData.push(slideObj);
+    }
 
-  console.log('✅ Build complete:', outDir);
-  console.log('   Output:');
-  console.log('   - index.html');
-  console.log('   - assets/css/viewer.css');
-  console.log('   - assets/js/viewer.js');
-  if (fs.existsSync(mediaOutDir)) {
-    console.log('   - media/ (' + fs.readdirSync(mediaOutDir).length + ' files)');
-  }
+    const { emuToPx } = require('./src/utils/units');
+    const slideW = Math.round(emuToPx(pres.widthEmu));
+    const slideH = Math.round(emuToPx(pres.heightEmu));
+    const slidesHtml = renderSlides(slidesData, { widthEmu: pres.widthEmu, heightEmu: pres.heightEmu, roundSize: true });
+
+    copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));
+
+    const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
+    let finalHtml = replaceTemplateTokens(templateHtml, {
+      '{{SLIDES}}': slidesHtml,
+      '{{SLIDE_COUNT}}': String(slidesData.length),
+      '{{SLIDE_WIDTH}}': String(slideW),
+      '{{SLIDE_HEIGHT}}': String(slideH),
+      '{{UPLOAD_ZONE_CLASS}}': 'hidden',
+      '{{STAGE_STYLE}}': '',
+      '{{CONTROLS_STYLE}}': '',
+    });
+
+    fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
+
+    console.log('✅ Static mode build complete:', outDir);
+    console.log('   Output:');
+    console.log('   - index.html');
+    console.log('   - assets/css/viewer.css');
+    console.log('   - assets/js/viewer.js');
+    if (fs.existsSync(mediaOutDir)) {
+      console.log('   - media/ (' + fs.readdirSync(mediaOutDir).length + ' files)');
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -167,13 +191,31 @@ function replaceTemplateTokens(template, replacements) {
 }
 
 if (require.main === module) {
-  const input = process.argv[2] || 'test.pptx';
-  const output = process.argv[3] || 'dist';
-  build(input, output).catch(err => {
-    console.error('❌ Build failed:', err.message);
-    console.error(err.stack);
-    process.exit(1);
-  });
+  const args = process.argv.slice(2);
+  const isStatic = args.includes('--static');
+  const staticIdx = args.indexOf('--static');
+  if (staticIdx !== -1) args.splice(staticIdx, 1);
+
+  const output = args[args.length - 1] || 'dist';
+
+  if (isStatic) {
+    const input = args[0];
+    if (!input) {
+      console.error('❌ Usage: node build.js --static <pptx> [outDir]');
+      process.exit(1);
+    }
+    buildStatic(input, output).catch(err => {
+      console.error('❌ Build failed:', err.message);
+      console.error(err.stack);
+      process.exit(1);
+    });
+  } else {
+    buildUpload(output).catch(err => {
+      console.error('❌ Build failed:', err.message);
+      console.error(err.stack);
+      process.exit(1);
+    });
+  }
 }
 
-module.exports = { build };
+module.exports = { buildUpload, buildStatic };

@@ -134,7 +134,9 @@
   function parseTheme(xmlStr) {
     var doc = parseXml(xmlStr);
     var theme = { colors: {} };
-    var clrScheme = doc['a:theme'] && doc['a:theme']['a:themeElements'] && doc['a:theme']['a:themeElements']['a:clrScheme'];
+    var root = doc['a:theme'] || doc;
+    var themeElements = child(root, 'themeElements');
+    var clrScheme = themeElements ? child(themeElements, 'clrScheme') : null;
     if (clrScheme) {
       for (var key in clrScheme) {
         if (key.startsWith('a:')) {
@@ -802,7 +804,7 @@
     }
     if (el.type === 'graphicFrame') {
       if (el.chartData) {
-        var chartJson = JSON.stringify(el.chartData).replace(/"/g, '&quot;');
+        var chartJson = JSON.stringify(el.chartData).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
         var chartStyle = style + 'animation-delay:' + animDelay + 'ms;';
         return '<div class="p-el p-chart ' + animClass + '" data-chart="' + chartJson + '" style="' + chartStyle + '"></div>';
       }
@@ -835,7 +837,8 @@
     for (var ri = 0; ri < tableData.rows.length; ri++) {
       var row = tableData.rows[ri];
       var rowHeight = row.height ? row.height * rowScale : null;
-      var rowStyle = rowHeight ? 'height:' + rowHeight + 'px;' : '';
+      var delay = (0.82 + ri * 0.06).toFixed(2);
+      var rowStyle = (rowHeight ? 'height:' + rowHeight + 'px;' : '') + 'animation-delay:' + delay + 's;';
       tblHtml += '<tr style="' + rowStyle + '">';
       for (var c = 0; c < row.cells.length; c++) {
         var tag = ri === 0 ? 'th' : 'td';
@@ -858,11 +861,6 @@
     s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
     if (rowHeight) s += 'height:' + rowHeight + 'px;';
     return s;
-  }
-
-  function escapeHtml(text) {
-    if (!text) return '';
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function renderLine(el, animClass, animDelay) {
@@ -937,9 +935,11 @@
 
   function buildBaseStyle(xf) {
     var s = 'position:absolute;left:' + xf.x + 'px;top:' + xf.y + 'px;width:' + xf.width + 'px;height:' + xf.height + 'px;';
-    if (xf.rotation) s += 'transform:rotate(' + xf.rotation + 'deg);';
-    if (xf.flipH) s += 'transform:scaleX(-1);';
-    if (xf.flipV) s += 'transform:scaleY(-1);';
+    var transforms = [];
+    if (xf.rotation) transforms.push('rotate(' + xf.rotation + 'deg)');
+    if (xf.flipH) transforms.push('scaleX(-1)');
+    if (xf.flipV) transforms.push('scaleY(-1)');
+    if (transforms.length) s += 'transform:' + transforms.join(' ') + ';';
     return s;
   }
   function buildFillCss(el) {
@@ -977,10 +977,6 @@
     var m = /val\s+(\d+)/.exec(fmla);
     return m ? parseInt(m[1], 10) : 0;
   }
-  function escapeHtml(text) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
   // ==================== 图片转 Base64 ====================
   function blobToDataURL(blob) {
     return new Promise(function (resolve) {
@@ -1032,7 +1028,6 @@
                       if (target.startsWith('../media/')) {
                         var mediaPath = target.replace(/^\.\.\//, 'ppt/');
                         var mediaName = mediaPath.split('/').pop();
-                        var mime = mediaName.endsWith('.png') ? 'image/png' : (mediaName.endsWith('.jpg') || mediaName.endsWith('.jpeg') ? 'image/jpeg' : 'application/octet-stream');
                         if (!mediaMap[rid]) {
                           var mp = zip.file(mediaPath).async('blob').then(function (blob) {
                             return blobToDataURL(blob).then(function (url) { mediaMap[rid] = url; });

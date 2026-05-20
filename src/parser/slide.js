@@ -69,6 +69,7 @@ function parseSlide(slidePath, theme, relsMap) {
 function resolveRelPath(sourcePath, target) {
   if (!target) return '';
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
+  if (path.isAbsolute(target)) return target;
   if (target.startsWith('/')) {
     const packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
     return path.join(packageRoot, target.slice(1));
