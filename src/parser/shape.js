@@ -475,13 +475,35 @@ function parseChartXml(xmlStr, theme) {
   const titleNode = child(chart, 'title') || chart['c:title'];
   if (titleNode) {
     const tx = child(titleNode, 'tx') || titleNode['c:tx'];
-    const rich = tx && (child(tx, 'rich') || tx['a:rich']);
-    const p = rich && (child(rich, 'p') || rich['a:p']);
-    if (p) {
-      const r = child(p, 'r') || p['a:r'];
-      const t = r && (child(r, 't') || r['a:t']);
-      title = textValueToString(t);
+    title = extractRichText(tx);
+  }
+
+  function extractRichText(node) {
+    const pieces = [];
+    collectTextRuns(node, pieces);
+    return pieces.join('');
+  }
+
+  function collectTextRuns(node, pieces) {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      node.forEach(item => collectTextRuns(item, pieces));
+      return;
     }
+    if (typeof node !== 'object') {
+      const value = textValueToString(node);
+      if (value) pieces.push(value);
+      return;
+    }
+
+    const t = child(node, 't') || node['a:t'];
+    const value = textValueToString(t);
+    if (value) pieces.push(value);
+
+    collectTextRuns(child(node, 'rich') || node['c:rich'] || node['a:rich'], pieces);
+    collectTextRuns(child(node, 'p') || node['a:p'], pieces);
+    collectTextRuns(child(node, 'r') || node['a:r'], pieces);
+    collectTextRuns(child(node, 'fld') || node['a:fld'], pieces);
   }
 
   function extractText(node) {

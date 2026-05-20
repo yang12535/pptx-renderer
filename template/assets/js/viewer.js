@@ -437,14 +437,14 @@
       data: categories,
       axisLabel: { fontSize: 12, color: '#495057' },
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: '#adb5bd' } }
+      axisLine: { onZero: false, lineStyle: { color: '#adb5bd' } }
     };
   }
 
   function buildValueAxis(scale) {
     return {
       type: 'value',
-      min: 0,
+      min: scale.min,
       max: scale.max,
       interval: scale.interval,
       axisLabel: { fontSize: 12, color: '#868e96', formatter: formatChartNumber },
@@ -455,21 +455,30 @@
   }
 
   function buildValueScale(series) {
+    var min = 0;
     var max = 0;
+    var hasValue = false;
     series.forEach(function (s) {
       (s.values || []).forEach(function (v) {
         var n = Number(v);
-        if (!isNaN(n)) max = Math.max(max, n);
+        if (!isNaN(n)) {
+          hasValue = true;
+          min = Math.min(min, n);
+          max = Math.max(max, n);
+        }
       });
     });
 
-    if (max <= 0) return { max: 1, interval: 0.2 };
+    if (!hasValue) return { min: 0, max: 1, interval: 0.2 };
 
-    var padded = max * 1.15;
-    var target = padded / 5.5;
+    var paddedMin = min < 0 ? min * 1.15 : 0;
+    var paddedMax = max > 0 ? max * 1.15 : 0;
+    var extent = Math.max(Math.abs(paddedMin), Math.abs(paddedMax), 1);
+    var target = extent / 5.5;
     var interval = niceInterval(target);
     return {
-      max: Math.ceil(padded / interval) * interval,
+      min: Math.floor(paddedMin / interval) * interval,
+      max: Math.ceil(paddedMax / interval) * interval,
       interval: interval
     };
   }

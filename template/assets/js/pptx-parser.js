@@ -590,23 +590,41 @@
     var titleNode = child(chart, 'title') || chart['c:title'];
     if (titleNode) {
       var tx = child(titleNode, 'tx') || titleNode['c:tx'];
-      var rich = tx && (child(tx, 'rich') || tx['a:rich']);
-      var p = rich && (child(rich, 'p') || rich['a:p']);
-      if (p) {
-        var r = child(p, 'r') || p['a:r'];
-        var t = r && (child(r, 't') || r['a:t']);
-        if (typeof t === 'string') title = t;
-        else if (t && t['#text']) title = t['#text'];
+      title = extractRichText(tx);
+    }
+
+    function extractRichText(node) {
+      var pieces = [];
+      collectTextRuns(node, pieces);
+      return pieces.join('');
+    }
+
+    function collectTextRuns(node, pieces) {
+      if (!node) return;
+      if (Array.isArray(node)) {
+        for (var ti = 0; ti < node.length; ti++) collectTextRuns(node[ti], pieces);
+        return;
       }
+      if (typeof node !== 'object') {
+        var rawValue = textValueToString(node);
+        if (rawValue) pieces.push(rawValue);
+        return;
+      }
+
+      var t = child(node, 't') || node['a:t'];
+      var value = textValueToString(t);
+      if (value) pieces.push(value);
+
+      collectTextRuns(child(node, 'rich') || node['c:rich'] || node['a:rich'], pieces);
+      collectTextRuns(child(node, 'p') || node['a:p'], pieces);
+      collectTextRuns(child(node, 'r') || node['a:r'], pieces);
+      collectTextRuns(child(node, 'fld') || node['a:fld'], pieces);
     }
 
     function extractText(node) {
       if (!node) return '';
       var v = child(node, 'v') || node['c:v'];
-      if (typeof v === 'string') return v;
-      if (typeof v === 'number') return String(v);
-      if (v && v['#text']) return v['#text'];
-      return '';
+      return textValueToString(v);
     }
 
     function extractCacheValues(cache) {
@@ -700,7 +718,8 @@
     if (!dLbls) return null;
     var showVal = child(dLbls, 'showVal') || dLbls['c:showVal'];
     if (!showVal) return null;
-    return showVal._val === true || showVal._val === 1 || showVal._val === '1';
+    var val = showVal._val;
+    return val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
   }
 
   function parseChartSeriesColor(ser, theme) {
