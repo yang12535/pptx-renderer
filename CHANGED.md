@@ -9,7 +9,7 @@
 - 为 ECharts 图表增加入场动画：
   - 柱状图从零值弹出。
   - 折线图先显示坐标轴，再按分类点逐步展开，避免瞬间铺满。
-- 为表格行增加逐行显现动画，并兼容 `prefers-reduced-motion`。
+- 为表格行增加逐行显现动画。
 
 ### Changed
 
@@ -44,6 +44,7 @@
 - 上传区域补充键盘可访问性和 100MB 文件大小限制。
 - 移除 TODO 中的个人绝对路径，并统一主线分支名称为仓库实际的 `master`。
 - 修复含负值的横向柱状图被 `min: 0` 数值轴裁掉的问题，正负发散图现在按真实数据范围显示。
+- 移除 `prefers-reduced-motion` 对查看器动画的禁用规则，保证系统关闭动画时 PPTX 入场、表格和图表动画仍会播放。
 
 ### Verified
 
@@ -55,6 +56,9 @@
 - `node --check template/assets/js/pptx-parser.js`
 - `node --check template/assets/js/viewer.js`
 - `node --check dist/assets/js/viewer.js`
+- `npm run build -- dist`
+- Playwright/Chrome 上传模式验证：在 `reduced-motion: reduce` 环境下上传测试 PPTX，生成 10 页并进入 viewer，active 元素动画名仍为 `fadeIn` / `slideIn...` 而非 `none`。
+- Playwright/Chrome 折线图验证：在 `reduced-motion: reduce` 环境下第 3 页折线图从 0 个点逐步展开到 14 个点，不会瞬间铺满。
 - `rg -n "p-placeholder|\[chart\]|\[graphic\]" dist/index.html` 无匹配
 - Chrome 验证 `http://127.0.0.1:8765/`：
   - 第 3 页折线图中途只显示部分年份，随后完整展开。

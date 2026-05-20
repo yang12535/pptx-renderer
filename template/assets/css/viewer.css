@@ -346,24 +346,3 @@ html, body {
     height: 51px;
   }
 }
-
-/* ── 减少动画偏好 ── */
-@media (prefers-reduced-motion: reduce) {
-  .slide,
-  .slide .p-el,
-  .slide .p-table tr,
-  #stage-inner,
-  #controls,
-  #thumbnails,
-  #toast {
-    transition: none !important;
-    animation: none !important;
-  }
-  /* 动画被禁用后，强制显示当前幻灯片内的所有元素 */
-  .slide.active .p-el {
-    opacity: 1 !important;
-  }
-  .slide.active .p-table tr {
-    opacity: 1 !important;
-  }
-}

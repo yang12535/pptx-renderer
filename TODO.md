@@ -48,10 +48,10 @@
 - [x] 舞台自动缩放（适配窗口大小）
 - [x] 缩略图栏（延迟构建 + 轻量表示）
 - [x] 控制栏自动隐藏 / 显示
-- [x] prefers-reduced-motion 无障碍支持
+- [x] PPTX 动画不跟随系统 reduced-motion 设置禁用
 
 ### Review 修复
-- [x] Codex Round 1: reduced-motion 清除 transform
+- [x] Codex Round 1: reduced-motion 清除 transform（后续按产品要求改为始终播放动画）
 - [x] Copilot Round 1: direction falsy、遍历性能、缩略图内存、死代码、viewport、尺寸匹配、line null
 - [x] Codex Round 2: 缩略图空面板、零维度 guard
 - [x] Copilot Round 2: 未使用导入/参数、硬编码 controls 高度
@@ -72,6 +72,7 @@
 - [x] **折线图动画几乎瞬间完成** — 已修复：折线图不再一次性注入完整数据，而是按分类点逐步追加，最后切换到完整最终态。
 - [x] **表格内容过密或溢出** — 已修复：结构化解析列宽、行高、边框、填充和内边距，渲染时按容器高度压缩行高并隐藏溢出。
 - [x] **动画延迟单位误判** — 已修复：`800ms` 不再被当作 `800s` 处理。
+- [x] **系统关闭动画后 PPTX 动画不播放** — 已修复：移除 `prefers-reduced-motion` 禁用规则，上传模式和图表动画在 reduced-motion 环境下仍按 PPTX viewer 逻辑播放。
 
 ---
 
