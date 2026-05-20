@@ -69,18 +69,17 @@ function parseSlide(slidePath, theme, relsMap) {
 function resolveRelPath(sourcePath, target) {
   if (!target) return '';
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
-  var resolved;
+  const packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
+  let resolved;
   if (target.startsWith('/')) {
-    const packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
     resolved = path.join(packageRoot, target.slice(1));
   } else if (path.isAbsolute(target)) {
     return target;
   } else {
     resolved = path.resolve(path.dirname(sourcePath), target);
   }
-  var packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
-  var realResolved = path.resolve(resolved);
-  var realPackageRoot = path.resolve(packageRoot);
+  const realResolved = path.resolve(resolved);
+  const realPackageRoot = path.resolve(packageRoot);
   if (!realResolved.startsWith(realPackageRoot + path.sep) && realResolved !== realPackageRoot) {
     console.warn('Path traversal blocked:', target, '->', resolved);
     return '';

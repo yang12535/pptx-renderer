@@ -14,7 +14,7 @@
 ### Changed
 
 - 构建流程改为使用系统临时目录解压 PPTX，避免在 `dist/` 内留下 `.temp` 工作目录。
-- 构建入口导出 `build` 函数，便于后续自动化或测试复用。
+- 构建入口导出 `buildUpload` / `buildStatic` 函数，便于后续自动化或测试复用。
 - relationship target 解析改为基于源 slide 路径和 package root 解析，减少图片、图表等相对路径错位。
 - 表格解析升级为结构化数据：
   - 解析列宽和行高。
@@ -49,10 +49,15 @@
 - 修复 chart cache 中稀疏 `<c:pt idx="...">` 被压缩导致分类或数值错位的问题，按原始 idx 补 `null` 保留空洞。
 - 修复表格单元格边框解析字段名不匹配的问题，解析器输出 `style.borders` 供渲染器逐边应用。
 - 移除未被 Node 代码使用的 `jszip` npm 依赖，浏览器上传模式继续使用 vendored `template/assets/vendor/jszip.min.js`。
+- 上传模式构建会拒绝覆盖已有文件路径，避免误把文件输出路径删除并替换成目录。
+- 浏览器端 PPTX 解析改为完整 Promise 链，内部读取失败会正确 reject 并回到上传错误提示。
+- 浏览器端 slide、media、chart 关系路径改为 package-relative 解析，并修复多个媒体关系异步转换时的闭包错位。
+- 文本 inset 渲染改为保留显式 `0`，避免表格单元格零边距被默认 padding 覆盖。
+- 图表缩放和数值格式化跳过 `null` / `undefined`，避免稀疏点被误当成 0。
 
 ### Verified
 
-- `npm run build -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist`
+- `npm run build:static -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist`
 - `node --check build.js`
 - `node --check src/parser/shape.js`
 - `node --check src/parser/slide.js`

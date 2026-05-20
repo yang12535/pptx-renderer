@@ -14,13 +14,8 @@ const PATHS = {
 };
 
 async function buildUpload(outDir) {
-  outDir = path.resolve(outDir);
+  outDir = prepareOutputDirectory(outDir);
   console.log('🚀 Build (upload mode):', outDir);
-
-  if (fs.existsSync(outDir)) {
-    fs.rmSync(outDir, { recursive: true });
-  }
-  fs.mkdirSync(outDir, { recursive: true });
 
   copyAssets(PATHS.assetsDir, path.join(outDir, 'assets'));
 
@@ -49,13 +44,8 @@ async function buildUpload(outDir) {
 
 async function buildStatic(inputPptx, outDir) {
   inputPptx = path.resolve(inputPptx);
-  outDir = path.resolve(outDir);
+  outDir = prepareOutputDirectory(outDir);
   console.log('🚀 Build (static mode):', inputPptx);
-
-  if (fs.existsSync(outDir)) {
-    fs.rmSync(outDir, { recursive: true });
-  }
-  fs.mkdirSync(outDir, { recursive: true });
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-renderer-'));
   try {
@@ -75,6 +65,7 @@ async function buildStatic(inputPptx, outDir) {
 
     const slidesData = [];
     const mediaOutDir = path.join(outDir, 'media');
+    const presentationPath = path.join(tempDir, 'ppt', 'presentation.xml');
 
     for (const sInfo of pres.slides) {
       const rId = sInfo.rId;
@@ -86,23 +77,25 @@ async function buildStatic(inputPptx, outDir) {
         continue;
       }
 
-      const slidePath = path.join(tempDir, 'ppt', slideTarget);
-      const slideRelsPath = path.join(tempDir, 'ppt', 'slides', '_rels', path.basename(slideTarget) + '.rels');
+      const slidePath = resolveRelationshipTarget(presentationPath, slideTarget, tempDir);
+      if (!slidePath || !fs.existsSync(slidePath)) {
+        console.warn('  ⚠️  Slide file not found:', slideTarget, '->', slidePath);
+        continue;
+      }
+      const slideRelsPath = path.join(path.dirname(slidePath), '_rels', path.basename(slidePath) + '.rels');
       const slideRelsMap = fs.existsSync(slideRelsPath) ? parseRels(slideRelsPath) : {};
 
       const resolvedRels = {};
       for (const [rid, target] of Object.entries(slideRelsMap)) {
-        if (target.startsWith('../media/')) {
-          const src = path.join(tempDir, 'ppt', target.replace(/^\.\.\//, ''));
-          const dstName = path.basename(target);
+        const resolvedTarget = resolveRelationshipTarget(slidePath, target, tempDir);
+        if (resolvedTarget && isMediaPath(resolvedTarget) && fs.existsSync(resolvedTarget)) {
+          const dstName = path.basename(resolvedTarget);
           const dst = path.join(mediaOutDir, dstName);
-          if (fs.existsSync(src)) {
-            if (!fs.existsSync(mediaOutDir)) fs.mkdirSync(mediaOutDir, { recursive: true });
-            fs.copyFileSync(src, dst);
-            resolvedRels[rid] = './media/' + dstName;
-          }
+          if (!fs.existsSync(mediaOutDir)) fs.mkdirSync(mediaOutDir, { recursive: true });
+          fs.copyFileSync(resolvedTarget, dst);
+          resolvedRels[rid] = './media/' + dstName;
         } else {
-          resolvedRels[rid] = resolveRelationshipTarget(slidePath, target, tempDir);
+          resolvedRels[rid] = resolvedTarget;
         }
       }
 
@@ -156,6 +149,19 @@ function parseRels(relsPath) {
   return map;
 }
 
+function prepareOutputDirectory(outDir) {
+  const resolved = path.resolve(outDir);
+  if (fs.existsSync(resolved)) {
+    const stat = fs.lstatSync(resolved);
+    if (!stat.isDirectory()) {
+      throw new Error('Output path exists and is not a directory: ' + resolved);
+    }
+    fs.rmSync(resolved, { recursive: true });
+  }
+  fs.mkdirSync(resolved, { recursive: true });
+  return resolved;
+}
+
 function copyAssets(srcDir, dstDir) {
   if (!fs.existsSync(srcDir)) return;
   fs.mkdirSync(dstDir, { recursive: true });
@@ -170,6 +176,10 @@ function copyAssets(srcDir, dstDir) {
       fs.copyFileSync(srcPath, dstPath);
     }
   }
+}
+
+function isMediaPath(targetPath) {
+  return /\.(png|jpe?g|gif|bmp|svg|emf|wmf|webp|tiff?)$/i.test(targetPath || '');
 }
 
 function resolveRelationshipTarget(sourcePath, target, packageRoot) {

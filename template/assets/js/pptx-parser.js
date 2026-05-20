@@ -104,6 +104,37 @@
     return parts.join('/');
   }
 
+  function getRelsPathForPart(partPath) {
+    var slash = partPath.lastIndexOf('/');
+    var dir = slash === -1 ? '' : partPath.slice(0, slash + 1);
+    var name = slash === -1 ? partPath : partPath.slice(slash + 1);
+    return dir + '_rels/' + name + '.rels';
+  }
+
+  function isExternalTarget(target) {
+    return /^[a-z][a-z0-9+.-]*:/i.test(target || '');
+  }
+
+  function isMediaPath(targetPath) {
+    return /\.(png|jpe?g|gif|bmp|svg|emf|wmf|webp|tiff?)$/i.test(targetPath || '');
+  }
+
+  function readZipText(zip, zipPath) {
+    var file = zip.file(zipPath);
+    if (!file) return Promise.reject(new Error('PPTX part not found: ' + zipPath));
+    return file.async('string');
+  }
+
+  function loadMediaDataUrl(zip, mediaPath, mediaMap) {
+    if (!mediaMap[mediaPath]) {
+      var file = zip.file(mediaPath);
+      mediaMap[mediaPath] = file
+        ? file.async('blob').then(blobToDataURL)
+        : Promise.resolve('');
+    }
+    return mediaMap[mediaPath];
+  }
+
   // ==================== 单位转换 ====================
   function emuToPx(emu) {
     var n = typeof emu === 'string' ? parseInt(emu, 10) : emu;
@@ -937,8 +968,8 @@
     else if (anchor === 'just') align = 'justify';
     align = normalizeTextAlign(align);
     var pad = '';
-    if (lIns || tIns || rIns || bIns) {
-      pad = 'padding:' + (tIns || 0) + 'px ' + (rIns || 7) + 'px ' + (bIns || 0) + 'px ' + (lIns || 7) + 'px;';
+    if (hasInset(lIns) || hasInset(tIns) || hasInset(rIns) || hasInset(bIns)) {
+      pad = 'padding:' + textInset(tIns, 0) + 'px ' + textInset(rIns, 7) + 'px ' + textInset(bIns, 0) + 'px ' + textInset(lIns, 7) + 'px;';
     }
     var valign = anchor === 'b' ? 'flex-end' : (anchor === 'ctr' ? 'center' : 'flex-start');
     var html = '<div class="p-txBody" style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:' + valign + ';text-align:' + align + ';' + pad + 'box-sizing:border-box;">';
@@ -979,6 +1010,14 @@
     if (value === 'just') return 'justify';
     if (value === 'l') return 'left';
     return value || 'left';
+  }
+
+  function hasInset(value) {
+    return value !== undefined && value !== null;
+  }
+
+  function textInset(value, fallback) {
+    return hasInset(value) ? value : fallback;
   }
 
   function buildBaseStyle(xf) {
@@ -1037,108 +1076,96 @@
   // ==================== 主入口 ====================
   global.loadPptxFromFile = function (file) {
     console.log("[Parser] loadPptxFromFile start");
-    return new Promise(function (resolve, reject) {
-      JSZip.loadAsync(file).then(function (zip) {
+    return JSZip.loadAsync(file).then(function (zip) {
       console.log("[Parser] zip loaded, files:", Object.keys(zip.files).join(", "));
-        // 读取 presentation.xml
-        zip.file('ppt/presentation.xml').async('string').then(function (presXml) {
-          var pres = parsePresentation(presXml);
-      console.log("[Parser] presentation parsed, slides:", pres.slides.length, "size:", pres.widthEmu, "x", pres.heightEmu);
-          // 读取主题
-          var themePromise = Promise.resolve(null);
-          var themeFiles = Object.keys(zip.files).filter(function (p) { return /^ppt\/theme\/theme\d+\.xml$/.test(p); });
-          if (themeFiles.length > 0) {
-            themePromise = zip.file(themeFiles[0]).async('string').then(parseTheme);
-          }
-          themePromise.then(function (theme) {
-            // 读取 presentation.xml.rels
-            zip.file('ppt/_rels/presentation.xml.rels').async('string').then(function (presRelsXml) {
-              var presRels = parseRels(presRelsXml);
-              var slidesData = [];
-              var mediaMap = {}; // relId -> base64 data URL
+      return readZipText(zip, 'ppt/presentation.xml').then(function (presXml) {
+        var pres = parsePresentation(presXml);
+        console.log("[Parser] presentation parsed, slides:", pres.slides.length, "size:", pres.widthEmu, "x", pres.heightEmu);
+        var themeFiles = Object.keys(zip.files).filter(function (p) { return /^ppt\/theme\/theme\d+\.xml$/.test(p); });
+        var themePromise = themeFiles.length > 0
+          ? readZipText(zip, themeFiles[0]).then(parseTheme)
+          : Promise.resolve(null);
 
-              // 解析每张幻灯片
-              var slidePromises = pres.slides.map(function (sInfo) {
-                var slideTarget = presRels[sInfo.rId];
-                if (!slideTarget) return Promise.resolve(null);
-                var slidePath = 'ppt/' + slideTarget;
-                var slideRelsPath = slidePath.replace('slides/', 'slides/_rels/') + '.rels';
-                return zip.file(slidePath).async('string').then(function (slideXml) {
-                  return Promise.resolve().then(function () {
-                    var relsFile = zip.file(slideRelsPath);
-                    if (!relsFile) return {};
-                    return relsFile.async('string').then(parseRels);
-                  }).then(function (slideRels) {
-                    var resolvedRels = {};
-                    var mediaPromises = [];
-                    for (var rid in slideRels) {
-                      var target = slideRels[rid];
-                      if (target.startsWith('../media/')) {
-                        var mediaPath = target.replace(/^\.\.\//, 'ppt/');
-                        var mediaName = mediaPath.split('/').pop();
-                        if (!mediaMap[mediaPath]) {
-                          var mp = zip.file(mediaPath).async('blob').then(function (blob) {
-                            return blobToDataURL(blob).then(function (url) { mediaMap[mediaPath] = url; });
-                          });
-                          mediaPromises.push(mp);
-                        }
-                        resolvedRels[rid] = (function (mp) {
-                          return function () { return mediaMap[mp]; };
-                        })(mediaPath);
-                      } else {
-                        resolvedRels[rid] = target;
-                      }
+        return themePromise.then(function (theme) {
+          return readZipText(zip, 'ppt/_rels/presentation.xml.rels').then(function (presRelsXml) {
+            var presRels = parseRels(presRelsXml);
+            var mediaMap = {};
+            var slidePromises = pres.slides.map(function (sInfo) {
+              var slideTarget = presRels[sInfo.rId];
+              if (!slideTarget) return Promise.resolve(null);
+              var slidePath = resolveZipPath('ppt/presentation.xml', slideTarget);
+              var slideRelsPath = getRelsPathForPart(slidePath);
+
+              return readZipText(zip, slidePath).then(function (slideXml) {
+                var relsFile = zip.file(slideRelsPath);
+                var relsPromise = relsFile ? relsFile.async('string').then(parseRels) : Promise.resolve({});
+                return relsPromise.then(function (slideRels) {
+                  var resolvedRels = {};
+                  var relPromises = Object.keys(slideRels).map(function (rid) {
+                    var target = slideRels[rid];
+                    if (!target || isExternalTarget(target)) {
+                      resolvedRels[rid] = target;
+                      return Promise.resolve();
                     }
-                    return Promise.all(mediaPromises).then(function () {
-                      // 解析 rels 中的函数引用转为实际值
-                      var finalRels = {};
-                      for (var rid in resolvedRels) {
-                        finalRels[rid] = typeof resolvedRels[rid] === 'function' ? resolvedRels[rid]() : resolvedRels[rid];
-                      }
-                      var slideResult = parseSlide(slideXml, theme, finalRels);
-                      console.log("[Parser] slide parsed, elements:", slideResult ? slideResult.elements.length : 0);
-                      if (!slideResult) return slideResult;
-                      var chartPromises = [];
-                      slideResult.elements.forEach(function(el) {
-                        if (el.type === 'graphicFrame' && el.chartRelId) {
-                          var chartPath = slideRels[el.chartRelId];
-                          if (chartPath) {
-                            chartPath = resolveZipPath(slidePath, chartPath);
-                            var chartFile = zip.file(chartPath);
-                            if (!chartFile) {
-                              console.warn('[Parser] chart file not found:', chartPath, 'relId:', el.chartRelId);
-                              return;
-                            }
-                            var cp = chartFile.async('string').then(function(chartXml) {
-                              el.chartData = parseChartXml(chartXml, theme);
-                            }).catch(function() { el.chartData = null; });
-                            chartPromises.push(cp);
-                          }
-                        }
+
+                    var packagePath = resolveZipPath(slidePath, target);
+                    if (isMediaPath(packagePath)) {
+                      return loadMediaDataUrl(zip, packagePath, mediaMap).then(function (url) {
+                        resolvedRels[rid] = url;
                       });
-                      return Promise.all(chartPromises).then(function() { return slideResult; });
+                    }
+
+                    resolvedRels[rid] = target;
+                    return Promise.resolve();
+                  });
+
+                  return Promise.all(relPromises).then(function () {
+                    var slideResult = parseSlide(slideXml, theme, resolvedRels);
+                    console.log("[Parser] slide parsed, elements:", slideResult ? slideResult.elements.length : 0);
+                    if (!slideResult) return slideResult;
+                    var chartPromises = [];
+                    slideResult.elements.forEach(function(el) {
+                      if (el.type === 'graphicFrame' && el.chartRelId) {
+                        var chartTarget = slideRels[el.chartRelId];
+                        if (chartTarget) {
+                          var chartPath = resolveZipPath(slidePath, chartTarget);
+                          var chartFile = zip.file(chartPath);
+                          if (!chartFile) {
+                            console.warn('[Parser] chart file not found:', chartPath, 'relId:', el.chartRelId);
+                            return;
+                          }
+                          var cp = chartFile.async('string').then(function(chartXml) {
+                            el.chartData = parseChartXml(chartXml, theme);
+                          }).catch(function() { el.chartData = null; });
+                          chartPromises.push(cp);
+                        }
+                      }
                     });
+                    return Promise.all(chartPromises).then(function() { return slideResult; });
                   });
                 });
               });
+            });
 
-              Promise.all(slidePromises).then(function (results) {
-                slidesData = results.filter(function (s) { return s !== null; });
-                var slideW = Math.round(emuToPx(pres.widthEmu));
-                var slideH = Math.round(emuToPx(pres.heightEmu));
-                var slidesHtml = renderSlides(slidesData, pres);
-                console.log("[Parser] render complete, html length:", slidesHtml.length);
-                resolve({
-                  slidesHtml: slidesHtml,
-                  slideCount: slidesData.length,
-                  slideW: slideW,
-                  slideH: slideH,
-                });
-              });
+            return Promise.all(slidePromises).then(function (results) {
+              var slidesData = results.filter(function (s) { return s !== null; });
+              var slideW = Math.round(emuToPx(pres.widthEmu));
+              var slideH = Math.round(emuToPx(pres.heightEmu));
+              var slidesHtml = renderSlides(slidesData, pres);
+              console.log("[Parser] render complete, html length:", slidesHtml.length);
+              return {
+                slidesHtml: slidesHtml,
+                slideCount: slidesData.length,
+                slideW: slideW,
+                slideH: slideH,
+              };
             });
           });
         });
-      }).catch(function(err) { console.error("[Parser] parse error:", err.message, err.stack); reject(err); });
+      });
+    }).catch(function(err) {
+      console.error("[Parser] parse error:", err.message, err.stack);
+      throw err;
     });
   };
 

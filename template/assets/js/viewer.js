@@ -114,6 +114,7 @@
 
   function handleFile(file) {
     console.log('[Upload] file selected:', file.name, file.size);
+    if (fileInput) fileInput.value = '';
     if (!file.name.toLowerCase().endsWith('.pptx')) {
       showUploadError('请选择 .pptx 格式的文件');
       return;
@@ -356,7 +357,7 @@
       var pieData = [];
       if (data.series[0]) {
         for (var i = 0; i < data.series[0].categories.length; i++) {
-          pieData.push({ name: data.series[0].categories[i], value: isInitial ? 0 : (data.series[0].values[i] || 0) });
+          pieData.push({ name: data.series[0].categories[i], value: isInitial ? 0 : toChartNumber(data.series[0].values[i]) });
         }
       }
       option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 11, color: '#495057' } }];
@@ -471,8 +472,8 @@
     var hasValue = false;
     series.forEach(function (s) {
       (s.values || []).forEach(function (v) {
-        var n = Number(v);
-        if (!isNaN(n)) {
+        var n = toChartNumber(v);
+        if (n !== null) {
           hasValue = true;
           min = Math.min(min, n);
           max = Math.max(max, n);
@@ -506,10 +507,16 @@
   }
 
   function formatChartNumber(value) {
-    var n = Number(value);
-    if (isNaN(n)) return value;
+    var n = toChartNumber(value);
+    if (n === null) return value == null ? '' : value;
     if (Math.abs(n - Math.round(n)) < 0.0001) return String(Math.round(n));
     return String(Math.round(n * 10) / 10);
+  }
+
+  function toChartNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    var n = Number(value);
+    return isFinite(n) ? n : null;
   }
 
   function resizeCharts() {

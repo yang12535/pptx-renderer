@@ -197,8 +197,8 @@ function renderText(txBody) {
   align = normalizeTextAlign(align);
 
   let pad = '';
-  if (lIns || tIns || rIns || bIns) {
-    pad = `padding:${tIns || 0}px ${rIns || 7}px ${bIns || 0}px ${lIns || 7}px;`;
+  if (hasInset(lIns) || hasInset(tIns) || hasInset(rIns) || hasInset(bIns)) {
+    pad = `padding:${textInset(tIns, 0)}px ${textInset(rIns, 7)}px ${textInset(bIns, 0)}px ${textInset(lIns, 7)}px;`;
   }
 
   const valign = anchor === 'b' ? 'flex-end' : anchor === 'ctr' ? 'center' : 'flex-start';
@@ -243,6 +243,14 @@ function renderText(txBody) {
 
   html += '</div>';
   return html;
+}
+
+function hasInset(value) {
+  return value !== undefined && value !== null;
+}
+
+function textInset(value, fallback) {
+  return hasInset(value) ? value : fallback;
 }
 
 function normalizeTextAlign(value) {
