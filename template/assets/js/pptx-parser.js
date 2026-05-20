@@ -373,7 +373,7 @@
     var runs = [];
     for (var key in p) {
       if (key.startsWith('_') || key === '#text') continue;
-      if (key.endsWith(':r') || key === 'r') {
+      if (key.endsWith(':r') || key === 'r' || key.endsWith(':fld') || key === 'fld') {
         var arr = toArray(p[key]);
         for (var i = 0; i < arr.length; i++) runs.push(parseRun(arr[i], theme));
       } else if (key.endsWith(':br') || key === 'br') {
@@ -387,8 +387,9 @@
 
   function parseRun(r, theme) {
     var rPr = child(r, 'rPr') || r['a:rPr'];
-    var t = child(r, 't') || r['a:t'];
-    var run = { type: 'text', text: typeof t === 'string' ? t : '', bold: false, italic: false, underline: false, strike: false, size: 18, color: 'inherit', font: null, lang: null };
+    var parsedText = child(r, 't');
+    var rawText = parsedText !== undefined ? parsedText : r['a:t'];
+    var run = { type: 'text', text: textValueToString(rawText), bold: false, italic: false, underline: false, strike: false, size: 18, color: 'inherit', font: null, lang: null };
     if (rPr) {
       run.bold = rPr._b === '1' || rPr._b === true;
       run.italic = rPr._i === '1' || rPr._i === true;
@@ -404,6 +405,14 @@
       if (ea) run.fontEa = ea._typeface;
     }
     return run;
+  }
+
+  function textValueToString(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value['#text'] !== undefined) return textValueToString(value['#text']);
+    return '';
   }
 
   function parseShape(sp, theme) {
@@ -466,12 +475,15 @@
       result.chartRelId = chart['_r:id'];
     }
     if (tbl) {
-      result.tableData = parseTableData(tbl);
+      result.tableData = parseTableData(tbl, theme);
     }
     return result;
   }
 
-  function parseTableData(tblObj) {
+  function parseTableData(tblObj, theme) {
+    var grid = child(tblObj, 'tblGrid') || tblObj['a:tblGrid'];
+    var gridCols = grid ? toArray(child(grid, 'gridCol') || grid['a:gridCol']) : [];
+    var colWidths = gridCols.map(function (col) { return col._w ? emuToPx(col._w) : null; });
     var rows = [];
     var trList = toArray(child(tblObj, 'tr') || tblObj['a:tr']);
     for (var r = 0; r < trList.length; r++) {
@@ -482,6 +494,14 @@
         var tc = tcList[c];
         var text = '';
         var txBody = child(tc, 'txBody') || tc['a:txBody'];
+        var textBody = parseTxBody(txBody, theme);
+        var style = parseTableCellStyle(tc, theme);
+        if (textBody && style.margins) {
+          if (typeof style.margins.left === 'number') textBody.lIns = style.margins.left;
+          if (typeof style.margins.right === 'number') textBody.rIns = style.margins.right;
+          if (typeof style.margins.top === 'number') textBody.tIns = style.margins.top;
+          if (typeof style.margins.bottom === 'number') textBody.bIns = style.margins.bottom;
+        }
         if (txBody) {
           var pList = toArray(child(txBody, 'p') || txBody['a:p']);
           for (var p = 0; p < pList.length; p++) {
@@ -495,14 +515,49 @@
             }
           }
         }
-        cells.push({ text: text });
+        cells.push({ text: text, textBody: textBody, style: style });
       }
-      rows.push({ cells: cells });
+      rows.push({ height: tr._h ? emuToPx(tr._h) : null, cells: cells });
     }
-    return { rows: rows };
+    return { colWidths: colWidths, rows: rows };
   }
 
-  function parseChartXml(xmlStr) {
+  function parseTableCellStyle(tc, theme) {
+    var tcPr = child(tc, 'tcPr') || tc['a:tcPr'];
+    var style = {};
+    if (!tcPr) return style;
+
+    var solidFill = child(tcPr, 'solidFill') || tcPr['a:solidFill'];
+    if (solidFill) style.fill = colorToCss(solidFill, theme);
+
+    var border = parseTableBorder(tcPr, theme);
+    if (border) style.border = border;
+
+    var margins = {};
+    if (tcPr._marL) margins.left = emuToPx(tcPr._marL);
+    if (tcPr._marR) margins.right = emuToPx(tcPr._marR);
+    if (tcPr._marT) margins.top = emuToPx(tcPr._marT);
+    if (tcPr._marB) margins.bottom = emuToPx(tcPr._marB);
+    if (Object.keys(margins).length > 0) style.margins = margins;
+
+    return style;
+  }
+
+  function parseTableBorder(tcPr, theme) {
+    var sides = ['lnL', 'lnR', 'lnT', 'lnB'];
+    for (var i = 0; i < sides.length; i++) {
+      var side = sides[i];
+      var ln = child(tcPr, side) || tcPr['a:' + side];
+      if (!ln) continue;
+      var parsed = parseLine(ln, theme);
+      if (parsed && parsed.color && parsed.color !== 'transparent') {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  function parseChartXml(xmlStr, theme) {
     var doc = parseXml(xmlStr);
     var chartSpace = child(doc, 'chartSpace') || doc['c:chartSpace'] || doc;
     var chart = child(chartSpace, 'chart') || chartSpace['c:chart'];
@@ -529,6 +584,8 @@
     var grp = child(chartNode, 'grouping') || chartNode['c:grouping'];
     if (grp) grouping = grp._val;
 
+    var showVal = getShowVal(child(chartNode, 'dLbls') || chartNode['c:dLbls']);
+
     var title = '';
     var titleNode = child(chart, 'title') || chart['c:title'];
     if (titleNode) {
@@ -552,6 +609,47 @@
       return '';
     }
 
+    function extractCacheValues(cache) {
+      if (!cache) return [];
+      var directPts = toArray(child(cache, 'pt') || cache['c:pt']);
+      if (directPts.length) {
+        return directPts.map(function (pt) { return extractText(pt); });
+      }
+
+      var levels = toArray(child(cache, 'lvl') || cache['c:lvl']);
+      var values = [];
+      for (var li = 0; li < levels.length; li++) {
+        var levelPts = toArray(child(levels[li], 'pt') || levels[li]['c:pt']);
+        for (var pi = 0; pi < levelPts.length; pi++) values.push(extractText(levelPts[pi]));
+      }
+      return values;
+    }
+
+    function extractChartPoints(container, refNames, cacheNames) {
+      if (!container) return [];
+
+      var refs = [];
+      for (var ri = 0; ri < refNames.length; ri++) {
+        var ref = child(container, refNames[ri]) || container['c:' + refNames[ri]];
+        refs = refs.concat(toArray(ref));
+      }
+      if (!refs.length) refs = [container];
+
+      for (var si = 0; si < refs.length; si++) {
+        var source = refs[si];
+        for (var ci = 0; ci < cacheNames.length; ci++) {
+          var cache = child(source, cacheNames[ci]) || source['c:' + cacheNames[ci]];
+          var values = extractCacheValues(cache);
+          if (values.length) return values;
+        }
+
+        var directValues = extractCacheValues(source);
+        if (directValues.length) return directValues;
+      }
+
+      return [];
+    }
+
     var seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
     var series = [];
     for (var s = 0; s < seriesList.length; s++) {
@@ -568,28 +666,48 @@
       var categories = [];
       var cat = child(ser, 'cat') || ser['c:cat'];
       if (cat) {
-        var catRef = child(cat, 'strRef') || cat['c:strRef'] || child(cat, 'numRef') || cat['c:numRef'];
-        var catCache = catRef && (child(catRef, 'strCache') || catRef['c:strCache'] || child(catRef, 'numCache') || catRef['c:numCache']);
-        var catPts = catCache ? toArray(child(catCache, 'pt') || catCache['c:pt']) : [];
-        for (var ci = 0; ci < catPts.length; ci++) categories.push(extractText(catPts[ci]));
+        categories = extractChartPoints(
+          cat,
+          ['strRef', 'numRef', 'multiLvlStrRef', 'strLit', 'numLit'],
+          ['strCache', 'numCache', 'multiLvlStrCache']
+        );
       }
 
       var values = [];
       var val = child(ser, 'val') || ser['c:val'];
       if (val) {
-        var valRef = child(val, 'numRef') || val['c:numRef'] || child(val, 'strRef') || val['c:strRef'];
-        var valCache = valRef && (child(valRef, 'numCache') || valRef['c:numCache'] || child(valRef, 'strCache') || valRef['c:strCache']);
-        var valPts = valCache ? toArray(child(valCache, 'pt') || valCache['c:pt']) : [];
-        for (var vi = 0; vi < valPts.length; vi++) {
-          var num = parseFloat(extractText(valPts[vi]));
+        var valueTexts = extractChartPoints(val, ['numRef', 'strRef', 'numLit', 'strLit'], ['numCache', 'strCache']);
+        for (var vi = 0; vi < valueTexts.length; vi++) {
+          var num = parseFloat(valueTexts[vi]);
           values.push(isNaN(num) ? 0 : num);
         }
       }
 
-      series.push({ name: sName, categories: categories, values: values });
+      var serShowVal = getShowVal(child(ser, 'dLbls') || ser['c:dLbls']);
+      series.push({
+        name: sName,
+        categories: categories,
+        values: values,
+        color: parseChartSeriesColor(ser, theme),
+        showVal: serShowVal === null ? showVal : serShowVal
+      });
     }
 
-    return { title: title, chartType: chartType, barDir: barDir, grouping: grouping, series: series };
+    return { title: title, chartType: chartType, barDir: barDir, grouping: grouping, showVal: showVal, series: series };
+  }
+
+  function getShowVal(dLbls) {
+    if (!dLbls) return null;
+    var showVal = child(dLbls, 'showVal') || dLbls['c:showVal'];
+    if (!showVal) return null;
+    return showVal._val === true || showVal._val === 1 || showVal._val === '1';
+  }
+
+  function parseChartSeriesColor(ser, theme) {
+    var spPr = child(ser, 'spPr') || ser['c:spPr'];
+    if (!spPr) return null;
+    var solidFill = child(spPr, 'solidFill') || spPr['a:solidFill'];
+    return solidFill ? colorToCss(solidFill, theme) : null;
   }
 
   function parseCxnSp(cxnSp, theme) {
@@ -670,23 +788,57 @@
         return '<div class="p-el p-chart ' + animClass + '" data-chart="' + chartJson + '" style="' + chartStyle + '"></div>';
       }
       if (el.tableData) {
-        var tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;">';
-        for (var ri = 0; ri < el.tableData.rows.length; ri++) {
-          tblHtml += '<tr>';
-          var row = el.tableData.rows[ri];
-          for (var ci = 0; ci < row.cells.length; ci++) {
-            var tag = ri === 0 ? 'th' : 'td';
-            tblHtml += '<' + tag + ' style="border:1px solid #ccc;padding:4px 8px;font-size:12px;background:' + (ri === 0 ? '#f5f5f5' : '#fff') + ';">' + escapeHtml(row.cells[ci].text) + '</' + tag + '>';
-          }
-          tblHtml += '</tr>';
-        }
-        tblHtml += '</table>';
-        var tblStyle = style + 'animation-delay:' + animDelay + 'ms;overflow:auto;';
+        var tblHtml = renderTable(el.tableData, xf.height);
+        var tblStyle = style + 'animation-delay:' + animDelay + 'ms;overflow:hidden;';
         return '<div class="p-el p-table-wrap ' + animClass + '" style="' + tblStyle + '">' + tblHtml + '</div>';
       }
       return '<div class="p-el p-placeholder ' + animClass + '" style="' + style + 'background:#f0f0f0;border:1px dashed #ccc;animation-delay:' + animDelay + 'ms;">[' + (el.subType || 'graphic') + ']</div>';
     }
     return '';
+  }
+
+  function renderTable(tableData, availableHeight) {
+    var tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;border-spacing:0;table-layout:fixed;">';
+    var totalRowHeight = tableData.rows.reduce(function (sum, row) { return sum + (row.height || 0); }, 0);
+    var rowScale = availableHeight && totalRowHeight > availableHeight ? availableHeight / totalRowHeight : 1;
+
+    if (tableData.colWidths && tableData.colWidths.length > 0) {
+      var total = tableData.colWidths.reduce(function (sum, width) { return sum + (width || 0); }, 0);
+      if (total > 0) {
+        tblHtml += '<colgroup>';
+        for (var ci = 0; ci < tableData.colWidths.length; ci++) {
+          tblHtml += '<col style="width:' + ((tableData.colWidths[ci] || 0) / total * 100) + '%;">';
+        }
+        tblHtml += '</colgroup>';
+      }
+    }
+
+    for (var ri = 0; ri < tableData.rows.length; ri++) {
+      var row = tableData.rows[ri];
+      var rowHeight = row.height ? row.height * rowScale : null;
+      var rowStyle = rowHeight ? 'height:' + rowHeight + 'px;' : '';
+      tblHtml += '<tr style="' + rowStyle + '">';
+      for (var c = 0; c < row.cells.length; c++) {
+        var tag = ri === 0 ? 'th' : 'td';
+        var cell = row.cells[c];
+        var content = cell.textBody ? renderText(cell.textBody) : escapeHtml(cell.text || '');
+        tblHtml += '<' + tag + ' class="p-table-cell" style="' + buildTableCellStyle(cell, rowHeight) + '">' + content + '</' + tag + '>';
+      }
+      tblHtml += '</tr>';
+    }
+
+    tblHtml += '</table>';
+    return tblHtml;
+  }
+
+  function buildTableCellStyle(cell, rowHeight) {
+    var cellStyle = cell.style || {};
+    var border = cellStyle.border || { width: 1, color: '#d9d9d9' };
+    var s = 'border:' + (border.width || 1) + 'px solid ' + (border.color || '#d9d9d9') + ';';
+    s += 'background:' + (cellStyle.fill || '#fff') + ';';
+    s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
+    if (rowHeight) s += 'height:' + rowHeight + 'px;';
+    return s;
   }
 
   function escapeHtml(text) {
@@ -718,6 +870,7 @@
     else if (anchor === 'ctr') align = 'center';
     else if (anchor === 'r') align = 'right';
     else if (anchor === 'just') align = 'justify';
+    align = normalizeTextAlign(align);
     var pad = '';
     if (lIns || tIns || rIns || bIns) {
       pad = 'padding:' + (tIns || 0) + 'px ' + (rIns || 7) + 'px ' + (bIns || 0) + 'px ' + (lIns || 7) + 'px;';
@@ -726,7 +879,7 @@
     var html = '<div class="p-txBody" style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:' + valign + ';text-align:' + align + ';' + pad + 'box-sizing:border-box;">';
     for (var i = 0; i < paragraphs.length; i++) {
       var para = paragraphs[i];
-      var pAlign = para.align || align;
+      var pAlign = normalizeTextAlign(para.align || align);
       var pStyle = 'text-align:' + pAlign + ';margin:0;';
       if (para.spaceBefore) pStyle += 'margin-top:' + para.spaceBefore + 'px;';
       if (para.spaceAfter) pStyle += 'margin-bottom:' + para.spaceAfter + 'px;';
@@ -753,6 +906,14 @@
     }
     html += '</div>';
     return html;
+  }
+
+  function normalizeTextAlign(value) {
+    if (value === 'ctr') return 'center';
+    if (value === 'r') return 'right';
+    if (value === 'just') return 'justify';
+    if (value === 'l') return 'left';
+    return value || 'left';
   }
 
   function buildBaseStyle(xf) {
@@ -885,7 +1046,7 @@
                               return;
                             }
                             var cp = chartFile.async('string').then(function(chartXml) {
-                              el.chartData = parseChartXml(chartXml);
+                              el.chartData = parseChartXml(chartXml, theme);
                             }).catch(function() { el.chartData = null; });
                             chartPromises.push(cp);
                           }

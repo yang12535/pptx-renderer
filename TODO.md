@@ -56,6 +56,8 @@
 - [x] Codex Round 2: 缩略图空面板、零维度 guard
 - [x] Copilot Round 2: 未使用导入/参数、硬编码 controls 高度
 - [x] PR squash merge 到 master
+- [x] 2026-05-20: 修复测试 PPTX 中年份字段丢失、图表/表格 placeholder 残留和表格过密问题
+- [x] 2026-05-20: 按视频参考补齐图表数据绘制动画，柱状图弹出、折线图逐点展开
 
 ---
 
@@ -66,18 +68,34 @@
   - [x] 控制按钮事件在上传模式也会绑定
   - [x] 键盘方向键不再被隐藏文件输入或按钮焦点误拦截
   - [x] `btnNext` disabled 状态按真实总页数更新
+- [x] **年份识别失败** — 已修复：`a:t` 中的纯数字会被 XML parser 解析成 number，现在统一转成字符串；同时将 `a:fld` 字段作为 run 解析。
+- [x] **折线图动画几乎瞬间完成** — 已修复：折线图不再一次性注入完整数据，而是按分类点逐步追加，最后切换到完整最终态。
+- [x] **表格内容过密或溢出** — 已修复：结构化解析列宽、行高、边框、填充和内边距，渲染时按容器高度压缩行高并隐藏溢出。
+- [x] **动画延迟单位误判** — 已修复：`800ms` 不再被当作 `800s` 处理。
 
 ---
 
 ## 🚧 待实现（Phase 2+）
 
 ### 图表支持
-- [ ] 解析 PPTX 图表 XML（ppt/charts/chart*.xml）
-  - [ ] 提取 categories / values / series
-  - [ ] 识别 chartType（bar / line / pie / radar / scatter）
-- [ ] 轻量方案：CSS 模拟柱状图生长（不引入 echarts）
-  - [ ] 用 --target-height + @keyframes barGrow 实现
-- [ ] （可选）echarts 集成方案
+- [x] 解析 PPTX 图表 XML（ppt/charts/chart*.xml）
+  - [x] 提取 categories / values / series
+  - [x] 识别常见 chartType（bar / line / pie）
+  - [x] 提取 series color 与 showVal
+- [x] ECharts 集成方案
+  - [x] 柱状图弹出动画
+  - [x] 折线图逐点展开动画
+- [ ] 复杂图表补齐
+  - [ ] 组合图 / 双轴图
+  - [ ] radar / scatter
+  - [ ] 更完整的数据标签位置与格式
+
+### 表格支持
+- [x] 解析表格列宽、行高、填充、边框、内边距
+- [x] 表格按容器高度适配，避免撑破幻灯片
+- [x] 表格逐行入场动画
+- [ ] 更完整的合并单元格支持
+- [ ] 更完整的单元格垂直对齐和文本换行策略
 
 ### PPTX 原生动画提取
 - [ ] 解析 slide.xml 中的 <p:timing> / <p:animEffect> 节点
@@ -87,7 +105,8 @@
 - [ ] 添加「自动播放」模式（interval 5s）
 - [ ] 触摸手势优化（双指缩放画布）
 - [ ] 进度指示器增强（底部圆点或缩略图网格）
-- [ ] 幻灯片切换时重置内部元素动画（已部分实现，需验证二次进入）
+- [x] 幻灯片切换时重置内部元素动画
+- [ ] 建立更多真实 PPTX 回归样例，覆盖图表、表格、图片和不同主题
 
 ---
 
@@ -96,3 +115,4 @@
 - [x] dist 目录可独立运行（双击 index.html 或 python http.server）
 - [x] 打包到 /home/yangtim/ls/pptx-renderer-dist.zip
 - [x] 分支推送到 GitHub（feat/browser-upload）
+- [ ] PR 合并回 main 后打 tag 或记录 release note

@@ -182,7 +182,7 @@ function parseParagraph(p, theme) {
   const children = Object.entries(p);
   for (const [key, val] of children) {
     if (key.startsWith('_')) continue;
-    if (key.endsWith(':r') || key === 'r') {
+    if (key.endsWith(':r') || key === 'r' || key.endsWith(':fld') || key === 'fld') {
       for (const r of toArray(val)) runs.push(parseRun(r, theme));
     } else if (key.endsWith(':br') || key === 'br') {
       runs.push({ type: 'br' });
@@ -195,10 +195,11 @@ function parseParagraph(p, theme) {
 
 function parseRun(r, theme) {
   const rPr = child(r, 'rPr') || r['a:rPr'];
-  const t = child(r, 't') || r['a:t'];
+  const parsedText = child(r, 't');
+  const rawText = parsedText !== undefined ? parsedText : r['a:t'];
   const run = {
     type: 'text',
-    text: typeof t === 'string' ? t : '',
+    text: textValueToString(rawText),
     bold: false,
     italic: false,
     underline: false,
@@ -227,6 +228,14 @@ function parseRun(r, theme) {
   }
 
   return run;
+}
+
+function textValueToString(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value['#text'] !== undefined) return textValueToString(value['#text']);
+  return '';
 }
 
 // ==================== 形状类型解析 ====================
@@ -336,7 +345,7 @@ function parseGraphicFrame(gf, theme, relsMap) {
     result.chartRelId = chart['r:id'] || chart['_r:id'];
   }
   if (tbl) {
-    result.tableData = parseTableData(tbl);
+    result.tableData = parseTableData(tbl, theme);
   }
   return result;
 }
@@ -363,7 +372,10 @@ function parseCxnSp(cxnSp, theme) {
   return shape;
 }
 
-function parseTableData(tblObj) {
+function parseTableData(tblObj, theme) {
+  const grid = child(tblObj, 'tblGrid') || tblObj['a:tblGrid'];
+  const gridCols = grid ? toArray(child(grid, 'gridCol') || grid['a:gridCol']) : [];
+  const colWidths = gridCols.map(col => col._w ? emuToPx(col._w) : null);
   const rows = [];
   const trList = toArray(child(tblObj, 'tr') || tblObj['a:tr']);
   for (const tr of trList) {
@@ -372,6 +384,14 @@ function parseTableData(tblObj) {
     for (const tc of tcList) {
       let text = '';
       const txBody = child(tc, 'txBody') || tc['a:txBody'];
+      const textBody = parseTxBody(txBody, theme);
+      const style = parseTableCellStyle(tc, theme);
+      if (textBody && style.margins) {
+        textBody.lIns = style.margins.left ?? textBody.lIns;
+        textBody.rIns = style.margins.right ?? textBody.rIns;
+        textBody.tIns = style.margins.top ?? textBody.tIns;
+        textBody.bIns = style.margins.bottom ?? textBody.bIns;
+      }
       if (txBody) {
         const pList = toArray(child(txBody, 'p') || txBody['a:p']);
         for (const para of pList) {
@@ -383,14 +403,48 @@ function parseTableData(tblObj) {
           }
         }
       }
-      cells.push({ text });
+      cells.push({ text, textBody, style });
     }
-    rows.push({ cells });
+    rows.push({ height: tr._h ? emuToPx(tr._h) : null, cells });
   }
-  return { rows };
+  return { colWidths, rows };
 }
 
-function parseChartXml(xmlStr) {
+function parseTableCellStyle(tc, theme) {
+  const tcPr = child(tc, 'tcPr') || tc['a:tcPr'];
+  const style = {};
+  if (!tcPr) return style;
+
+  const solidFill = child(tcPr, 'solidFill') || tcPr['a:solidFill'];
+  if (solidFill) style.fill = colorToCss(solidFill, theme);
+
+  const border = parseTableBorder(tcPr, theme);
+  if (border) style.border = border;
+
+  const margins = {};
+  if (tcPr._marL) margins.left = emuToPx(tcPr._marL);
+  if (tcPr._marR) margins.right = emuToPx(tcPr._marR);
+  if (tcPr._marT) margins.top = emuToPx(tcPr._marT);
+  if (tcPr._marB) margins.bottom = emuToPx(tcPr._marB);
+  if (Object.keys(margins).length > 0) style.margins = margins;
+
+  return style;
+}
+
+function parseTableBorder(tcPr, theme) {
+  const sides = ['lnL', 'lnR', 'lnT', 'lnB'];
+  for (const side of sides) {
+    const ln = child(tcPr, side) || tcPr['a:' + side];
+    if (!ln) continue;
+    const parsed = parseLine(ln, theme);
+    if (parsed && parsed.color && parsed.color !== 'transparent') {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseChartXml(xmlStr, theme) {
   const doc = parseXml(xmlStr);
   const chartSpace = child(doc, 'chartSpace') || doc['c:chartSpace'] || doc;
   const chart = child(chartSpace, 'chart') || chartSpace['c:chart'];
@@ -417,6 +471,8 @@ function parseChartXml(xmlStr) {
   const grp = child(chartNode, 'grouping') || chartNode['c:grouping'];
   if (grp) grouping = grp._val;
 
+  const showVal = getShowVal(child(chartNode, 'dLbls') || chartNode['c:dLbls']);
+
   let title = '';
   const titleNode = child(chart, 'title') || chart['c:title'];
   if (titleNode) {
@@ -440,6 +496,43 @@ function parseChartXml(xmlStr) {
     return '';
   }
 
+  function extractCacheValues(cache) {
+    if (!cache) return [];
+    const directPts = toArray(child(cache, 'pt') || cache['c:pt']);
+    if (directPts.length) return directPts.map(extractText);
+
+    const levels = toArray(child(cache, 'lvl') || cache['c:lvl']);
+    const values = [];
+    for (const lvl of levels) {
+      const levelPts = toArray(child(lvl, 'pt') || lvl['c:pt']);
+      values.push(...levelPts.map(extractText));
+    }
+    return values;
+  }
+
+  function extractChartPoints(container, refNames, cacheNames) {
+    if (!container) return [];
+
+    let refs = [];
+    for (const refName of refNames) {
+      refs = refs.concat(toArray(child(container, refName) || container['c:' + refName]));
+    }
+    if (!refs.length) refs = [container];
+
+    for (const ref of refs) {
+      for (const cacheName of cacheNames) {
+        const cache = child(ref, cacheName) || ref['c:' + cacheName];
+        const values = extractCacheValues(cache);
+        if (values.length) return values;
+      }
+
+      const directValues = extractCacheValues(ref);
+      if (directValues.length) return directValues;
+    }
+
+    return [];
+  }
+
   const seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
   const series = [];
   for (const ser of seriesList) {
@@ -455,28 +548,48 @@ function parseChartXml(xmlStr) {
     const categories = [];
     const cat = child(ser, 'cat') || ser['c:cat'];
     if (cat) {
-      const catRef = child(cat, 'strRef') || cat['c:strRef'] || child(cat, 'numRef') || cat['c:numRef'];
-      const catCache = catRef && (child(catRef, 'strCache') || catRef['c:strCache'] || child(catRef, 'numCache') || catRef['c:numCache']);
-      const catPts = catCache ? toArray(child(catCache, 'pt') || catCache['c:pt']) : [];
-      for (const cp of catPts) categories.push(extractText(cp));
+      categories.push(...extractChartPoints(
+        cat,
+        ['strRef', 'numRef', 'multiLvlStrRef', 'strLit', 'numLit'],
+        ['strCache', 'numCache', 'multiLvlStrCache']
+      ));
     }
 
     const values = [];
     const val = child(ser, 'val') || ser['c:val'];
     if (val) {
-      const valRef = child(val, 'numRef') || val['c:numRef'] || child(val, 'strRef') || val['c:strRef'];
-      const valCache = valRef && (child(valRef, 'numCache') || valRef['c:numCache'] || child(valRef, 'strCache') || valRef['c:strCache']);
-      const valPts = valCache ? toArray(child(valCache, 'pt') || valCache['c:pt']) : [];
-      for (const vp of valPts) {
-        const num = parseFloat(extractText(vp));
+      const valueTexts = extractChartPoints(val, ['numRef', 'strRef', 'numLit', 'strLit'], ['numCache', 'strCache']);
+      for (const valueText of valueTexts) {
+        const num = parseFloat(valueText);
         values.push(isNaN(num) ? 0 : num);
       }
     }
 
-    series.push({ name: sName, categories, values });
+    const serShowVal = getShowVal(child(ser, 'dLbls') || ser['c:dLbls']);
+    series.push({
+      name: sName,
+      categories,
+      values,
+      color: parseChartSeriesColor(ser, theme),
+      showVal: serShowVal === null ? showVal : serShowVal,
+    });
   }
 
-  return { title, chartType, barDir, grouping, series };
+  return { title, chartType, barDir, grouping, showVal, series };
+}
+
+function getShowVal(dLbls) {
+  if (!dLbls) return null;
+  const showVal = child(dLbls, 'showVal') || dLbls['c:showVal'];
+  if (!showVal) return null;
+  return showVal._val === true || showVal._val === 1 || showVal._val === '1';
+}
+
+function parseChartSeriesColor(ser, theme) {
+  const spPr = child(ser, 'spPr') || ser['c:spPr'];
+  if (!spPr) return null;
+  const solidFill = child(spPr, 'solidFill') || spPr['a:solidFill'];
+  return solidFill ? colorToCss(solidFill, theme) : null;
 }
 
 module.exports = {

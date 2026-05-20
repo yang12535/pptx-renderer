@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { extractPptx } = require('./src/core/unzip');
 const { parseXml, child, toArray } = require('./src/core/xml');
 const { parsePresentation } = require('./src/parser/presentation');
@@ -13,6 +14,8 @@ const PATHS = {
 };
 
 async function build(inputPptx, outDir) {
+  inputPptx = path.resolve(inputPptx);
+  outDir = path.resolve(outDir);
   console.log('🚀 Build started:', inputPptx);
 
   // 1. 清理 & 解压
@@ -21,7 +24,7 @@ async function build(inputPptx, outDir) {
   }
   fs.mkdirSync(outDir, { recursive: true });
 
-  const tempDir = path.join(outDir, '.temp');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-renderer-'));
   extractPptx(inputPptx, tempDir);
 
   // 2. 解析演示文稿
@@ -70,7 +73,7 @@ async function build(inputPptx, outDir) {
           resolvedRels[rid] = './media/' + dstName;
         }
       } else {
-        resolvedRels[rid] = target;
+        resolvedRels[rid] = resolveRelationshipTarget(slidePath, target, tempDir);
       }
     }
 
@@ -146,11 +149,21 @@ function copyAssets(srcDir, dstDir) {
   }
 }
 
-// CLI
-const input = process.argv[2] || 'test.pptx';
-const output = process.argv[3] || 'dist';
-build(input, output).catch(err => {
-  console.error('❌ Build failed:', err.message);
-  console.error(err.stack);
-  process.exit(1);
-});
+function resolveRelationshipTarget(sourcePath, target, packageRoot) {
+  if (!target) return target;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
+  if (target.startsWith('/')) return path.join(packageRoot, target.slice(1));
+  return path.resolve(path.dirname(sourcePath), target);
+}
+
+if (require.main === module) {
+  const input = process.argv[2] || 'test.pptx';
+  const output = process.argv[3] || 'dist';
+  build(input, output).catch(err => {
+    console.error('❌ Build failed:', err.message);
+    console.error(err.stack);
+    process.exit(1);
+  });
+}
+
+module.exports = { build };

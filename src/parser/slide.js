@@ -51,11 +51,11 @@ function parseSlide(slidePath, theme, relsMap) {
   // 解析图表
   for (const el of slideObj.elements) {
     if (el.type === 'graphicFrame' && el.chartRelId && relsMap[el.chartRelId]) {
-      const chartPath = path.resolve(path.dirname(slidePath), relsMap[el.chartRelId]);
+      const chartPath = resolveRelPath(slidePath, relsMap[el.chartRelId]);
       if (fs.existsSync(chartPath)) {
         try {
           const chartXml = fs.readFileSync(chartPath, 'utf-8');
-          el.chartData = parseChartXml(chartXml);
+          el.chartData = parseChartXml(chartXml, theme);
         } catch (e) {
           el.chartData = null;
         }
@@ -64,6 +64,16 @@ function parseSlide(slidePath, theme, relsMap) {
   }
 
   return slideObj;
+}
+
+function resolveRelPath(sourcePath, target) {
+  if (!target) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
+  if (target.startsWith('/')) {
+    const packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
+    return path.join(packageRoot, target.slice(1));
+  }
+  return path.resolve(path.dirname(sourcePath), target);
 }
 
 function parseBackground(bgObj, theme) {

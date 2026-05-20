@@ -197,6 +197,7 @@
       void el.offsetWidth;
       el.style.animationName = name || '';
     });
+    stopCharts(slideEl);
   }
 
   // ── UI 更新 ──
@@ -224,74 +225,260 @@
     if (typeof echarts === 'undefined') return;
     var charts = slideEl.querySelectorAll('.p-chart');
     charts.forEach(function(container) {
-      if (container._echartsInstance) return;
       var dataStr = container.getAttribute('data-chart');
       if (!dataStr) return;
       try {
         var data = JSON.parse(dataStr);
-        var option = buildEchartsOption(data);
+        stopChart(container);
+        if (container._echartsInstance) {
+          container._echartsInstance.dispose();
+        }
         var instance = echarts.init(container);
-        instance.setOption(option);
+        instance.setOption(buildEchartsOption(data, 'initial'), true);
         container._echartsInstance = instance;
+        container._chartRevealTimeout = window.setTimeout(function () {
+          if (container._echartsInstance === instance) {
+            if (data.chartType === 'lineChart') {
+              animateLineChart(container, instance, data);
+            } else {
+              instance.setOption(buildEchartsOption(data, 'reveal'), false);
+            }
+          }
+        }, getChartRevealDelay(container));
       } catch (e) {
         console.error('ECharts init error:', e);
       }
     });
   }
 
-  function buildEchartsOption(data) {
+  function stopCharts(slideEl) {
+    var charts = slideEl.querySelectorAll('.p-chart');
+    charts.forEach(stopChart);
+  }
+
+  function stopChart(container) {
+    if (container._chartRevealTimer) {
+      window.clearInterval(container._chartRevealTimer);
+      container._chartRevealTimer = null;
+    }
+    if (container._chartRevealTimeout) {
+      window.clearTimeout(container._chartRevealTimeout);
+      container._chartRevealTimeout = null;
+    }
+  }
+
+  function animateLineChart(container, instance, data) {
+    var categories = (data.series[0] && data.series[0].categories) || [];
+    var pointCount = Math.max(1, categories.length);
+    var visiblePoints = 0;
+
+    stopChart(container);
+    instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
+
+    container._chartRevealTimer = window.setInterval(function () {
+      if (container._echartsInstance !== instance) {
+        stopChart(container);
+        return;
+      }
+
+      visiblePoints += 1;
+      instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
+
+      if (visiblePoints >= pointCount) {
+        stopChart(container);
+        container._chartRevealTimeout = window.setTimeout(function () {
+          if (container._echartsInstance === instance) {
+            instance.setOption(buildEchartsOption(data, 'reveal'), false);
+          }
+        }, 220);
+      }
+    }, getLineRevealStepMs(pointCount));
+  }
+
+  function getLineRevealStepMs(pointCount) {
+    if (pointCount <= 6) return 320;
+    if (pointCount <= 10) return 260;
+    return 220;
+  }
+
+  function getChartRevealDelay(container) {
+    var rawDelay = (container.style.animationDelay || '0ms').trim();
+    var delay = parseFloat(rawDelay) || 0;
+    if (rawDelay.endsWith('s') && !rawDelay.endsWith('ms')) delay *= 1000;
+    return Math.max(260, delay + 220);
+  }
+
+  function buildEchartsOption(data, phase, visiblePoints) {
+    var categories = (data.series[0] && data.series[0].categories) || [];
+    var valueScale = buildValueScale(data.series);
+    var colors = data.series.map(function (s) { return s.color; }).filter(Boolean);
+    var isInitial = phase === 'initial';
+    var isLineStep = phase === 'line-step';
     var option = {
-      animation: false,
-      title: data.title ? { text: data.title, left: 'center', textStyle: { fontSize: 14 } } : undefined,
+      animation: !isInitial,
+      animationDuration: 1800,
+      animationDurationUpdate: 1500,
+      animationEasing: 'cubicOut',
+      animationDelay: function (idx) { return Math.min(idx * 100, 900); },
+      animationDelayUpdate: function (idx) { return Math.min(idx * 100, 900); },
+      color: colors.length ? colors : undefined,
+      title: data.title ? { text: data.title, left: 'center', textStyle: { fontSize: 14, color: '#212529', fontWeight: 700 } } : undefined,
       tooltip: { trigger: data.chartType === 'pieChart' ? 'item' : 'axis' },
-      legend: data.series.length > 1 ? { bottom: 0, textStyle: { fontSize: 10 } } : undefined,
-      grid: { left: '10%', right: '10%', bottom: '15%', top: '15%', containLabel: true },
+      legend: data.series.length > 1 ? { bottom: 0, textStyle: { fontSize: 11, color: '#495057' } } : undefined,
+      grid: { left: '8%', right: '10%', bottom: '10%', top: data.title ? '18%' : '10%', containLabel: true },
     };
 
     var series = [];
-    var categories = (data.series[0] && data.series[0].categories) || [];
 
     if (data.chartType === 'pieChart') {
       var pieData = [];
       if (data.series[0]) {
         for (var i = 0; i < data.series[0].categories.length; i++) {
-          pieData.push({ name: data.series[0].categories[i], value: data.series[0].values[i] || 0 });
+          pieData.push({ name: data.series[0].categories[i], value: isInitial ? 0 : (data.series[0].values[i] || 0) });
         }
       }
-      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 10 } }];
+      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 11, color: '#495057' } }];
       option.xAxis = undefined;
       option.yAxis = undefined;
     } else if (data.chartType === 'barChart' && data.barDir === 'bar') {
-      option.xAxis = { type: 'value' };
-      option.yAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
+      option.grid = { left: '7%', right: '8%', bottom: '12%', top: data.title ? '18%' : '10%', containLabel: true };
+      option.xAxis = buildValueAxis(valueScale);
+      option.yAxis = buildCategoryAxis(categories);
       for (var i = 0; i < data.series.length; i++) {
-        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+        series.push(buildSeries(data.series[i], 'bar', 'right', i, phase));
       }
       option.series = series;
     } else if (data.chartType === 'barChart' && data.barDir === 'col') {
-      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
-      option.yAxis = { type: 'value' };
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
       for (var i = 0; i < data.series.length; i++) {
-        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+        series.push(buildSeries(data.series[i], 'bar', 'top', i, phase));
       }
       option.series = series;
     } else if (data.chartType === 'lineChart') {
-      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
-      option.yAxis = { type: 'value' };
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
       for (var i = 0; i < data.series.length; i++) {
-        series.push({ name: data.series[i].name, type: 'line', data: data.series[i].values, smooth: false });
+        series.push(buildSeries(data.series[i], 'line', 'top', i, phase, visiblePoints));
       }
       option.series = series;
     } else {
-      option.xAxis = { type: 'category', data: categories, axisLabel: { fontSize: 10 } };
-      option.yAxis = { type: 'value' };
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
       for (var i = 0; i < data.series.length; i++) {
-        series.push({ name: data.series[i].name, type: 'bar', data: data.series[i].values });
+        series.push(buildSeries(data.series[i], 'bar', 'top', i, phase));
       }
       option.series = series;
     }
 
+    if (isLineStep) {
+      option.animationDuration = 260;
+      option.animationDurationUpdate = 260;
+      option.animationDelay = 0;
+      option.animationDelayUpdate = 0;
+    }
+
     return option;
+  }
+
+  function buildSeries(source, type, labelPosition, seriesIndex, phase, visiblePoints) {
+    var isInitial = phase === 'initial';
+    var isLineStep = phase === 'line-step';
+    var values = source.values || [];
+    var revealData = values.map(function (v, idx) {
+      if (type === 'line' && isLineStep) return idx < visiblePoints ? v : null;
+      if (!isInitial) return v;
+      if (type === 'line') return null;
+      return 0;
+    });
+    var duration = type === 'line' ? 2400 : 1700;
+    var delayStep = type === 'line' ? 95 : 150;
+    return {
+      name: source.name,
+      type: type,
+      data: revealData,
+      smooth: type === 'line' ? false : undefined,
+      showSymbol: type === 'line' ? true : undefined,
+      symbolSize: type === 'line' ? 6 : undefined,
+      connectNulls: type === 'line' ? false : undefined,
+      barMaxWidth: type === 'bar' ? 32 : undefined,
+      itemStyle: source.color ? { color: source.color } : undefined,
+      lineStyle: source.color ? { color: source.color, width: 2 } : undefined,
+      animation: !isInitial,
+      animationDuration: isLineStep ? 260 : duration,
+      animationDurationUpdate: isLineStep ? 260 : duration,
+      animationDelay: isLineStep ? 0 : function (idx) { return (seriesIndex || 0) * 180 + idx * delayStep; },
+      animationDelayUpdate: isLineStep ? 0 : function (idx) { return (seriesIndex || 0) * 180 + idx * delayStep; },
+      animationEasing: type === 'bar' ? 'backOut' : 'cubicOut',
+      label: source.showVal && !isInitial && !isLineStep ? {
+        show: true,
+        position: labelPosition,
+        color: '#495057',
+        fontSize: 12,
+        formatter: function (params) { return formatChartNumber(params.value); }
+      } : undefined
+    };
+  }
+
+  function buildCategoryAxis(categories) {
+    return {
+      type: 'category',
+      data: categories,
+      axisLabel: { fontSize: 12, color: '#495057' },
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#adb5bd' } }
+    };
+  }
+
+  function buildValueAxis(scale) {
+    return {
+      type: 'value',
+      min: 0,
+      max: scale.max,
+      interval: scale.interval,
+      axisLabel: { fontSize: 12, color: '#868e96', formatter: formatChartNumber },
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#adb5bd' } },
+      splitLine: { lineStyle: { color: '#e9ecef' } }
+    };
+  }
+
+  function buildValueScale(series) {
+    var max = 0;
+    series.forEach(function (s) {
+      (s.values || []).forEach(function (v) {
+        var n = Number(v);
+        if (!isNaN(n)) max = Math.max(max, n);
+      });
+    });
+
+    if (max <= 0) return { max: 1, interval: 0.2 };
+
+    var padded = max * 1.15;
+    var target = padded / 5.5;
+    var interval = niceInterval(target);
+    return {
+      max: Math.ceil(padded / interval) * interval,
+      interval: interval
+    };
+  }
+
+  function niceInterval(target) {
+    var exponent = Math.floor(Math.log(target) / Math.LN10);
+    var base = Math.pow(10, exponent);
+    var steps = [1, 2, 5, 10];
+    for (var i = 0; i < steps.length; i++) {
+      var interval = steps[i] * base;
+      if (target <= interval) return interval;
+    }
+    return 10 * base;
+  }
+
+  function formatChartNumber(value) {
+    var n = Number(value);
+    if (isNaN(n)) return value;
+    if (Math.abs(n - Math.round(n)) < 0.0001) return String(Math.round(n));
+    return String(Math.round(n * 10) / 10);
   }
 
   function resizeCharts() {

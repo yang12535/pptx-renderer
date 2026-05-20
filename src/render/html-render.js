@@ -103,18 +103,8 @@ function renderElement(el, index) {
       return `<div class="p-el p-chart ${animClass}" data-chart="${chartJson}" style="${chartStyle}"></div>`;
     }
     if (el.tableData) {
-      let tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;">';
-      for (let ri = 0; ri < el.tableData.rows.length; ri++) {
-        tblHtml += '<tr>';
-        const row = el.tableData.rows[ri];
-        for (let ci = 0; ci < row.cells.length; ci++) {
-          const tag = ri === 0 ? 'th' : 'td';
-          tblHtml += `<${tag} style="border:1px solid #ccc;padding:4px 8px;font-size:12px;background:${ri === 0 ? '#f5f5f5' : '#fff'};">${escapeHtml(row.cells[ci].text)}</${tag}>`;
-        }
-        tblHtml += '</tr>';
-      }
-      tblHtml += '</table>';
-      const tblStyle = style + `animation-delay:${animDelay}ms;overflow:auto;`;
+      const tblHtml = renderTable(el.tableData, xf.height);
+      const tblStyle = style + `animation-delay:${animDelay}ms;overflow:hidden;`;
       return `<div class="p-el p-table-wrap ${animClass}" style="${tblStyle}">${tblHtml}</div>`;
     }
     const fullStyle = style + `background:#f0f0f0;border:1px dashed #ccc;animation-delay:${animDelay}ms;`;
@@ -122,6 +112,50 @@ function renderElement(el, index) {
   }
 
   return '';
+}
+
+function renderTable(tableData, availableHeight) {
+  let tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;border-spacing:0;table-layout:fixed;">';
+  const totalRowHeight = tableData.rows.reduce((sum, row) => sum + (row.height || 0), 0);
+  const rowScale = availableHeight && totalRowHeight > availableHeight ? availableHeight / totalRowHeight : 1;
+
+  if (tableData.colWidths && tableData.colWidths.length > 0) {
+    const total = tableData.colWidths.reduce((sum, width) => sum + (width || 0), 0);
+    if (total > 0) {
+      tblHtml += '<colgroup>';
+      for (const width of tableData.colWidths) {
+        tblHtml += `<col style="width:${(width || 0) / total * 100}%;">`;
+      }
+      tblHtml += '</colgroup>';
+    }
+  }
+
+  for (let ri = 0; ri < tableData.rows.length; ri++) {
+    const row = tableData.rows[ri];
+    const rowHeight = row.height ? row.height * rowScale : null;
+    const rowStyle = rowHeight ? `height:${rowHeight}px;` : '';
+    tblHtml += `<tr style="${rowStyle}">`;
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      const tag = ri === 0 ? 'th' : 'td';
+      const cell = row.cells[ci];
+      const content = cell.textBody ? renderText(cell.textBody) : escapeHtml(cell.text || '');
+      tblHtml += `<${tag} class="p-table-cell" style="${buildTableCellStyle(cell, rowHeight)}">${content}</${tag}>`;
+    }
+    tblHtml += '</tr>';
+  }
+
+  tblHtml += '</table>';
+  return tblHtml;
+}
+
+function buildTableCellStyle(cell, rowHeight) {
+  const cellStyle = cell.style || {};
+  const border = cellStyle.border || { width: 1, color: '#d9d9d9' };
+  let s = `border:${border.width || 1}px solid ${border.color || '#d9d9d9'};`;
+  s += `background:${cellStyle.fill || '#fff'};`;
+  s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
+  if (rowHeight) s += `height:${rowHeight}px;`;
+  return s;
 }
 
 function renderLine(el, animClass, animDelay) {
@@ -150,6 +184,7 @@ function renderText(txBody) {
   else if (anchor === 'ctr') align = 'center';
   else if (anchor === 'r') align = 'right';
   else if (anchor === 'just') align = 'justify';
+  align = normalizeTextAlign(align);
 
   let pad = '';
   if (lIns || tIns || rIns || bIns) {
@@ -161,7 +196,7 @@ function renderText(txBody) {
   let html = `<div class="p-txBody" style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:${valign};text-align:${align};${pad}box-sizing:border-box;">`;
 
   for (const para of paragraphs) {
-    const pAlign = para.align || align;
+    const pAlign = normalizeTextAlign(para.align || align);
     let pStyle = `text-align:${pAlign};margin:0;`;
     if (para.spaceBefore) pStyle += `margin-top:${para.spaceBefore}px;`;
     if (para.spaceAfter) pStyle += `margin-bottom:${para.spaceAfter}px;`;
@@ -198,6 +233,14 @@ function renderText(txBody) {
 
   html += '</div>';
   return html;
+}
+
+function normalizeTextAlign(value) {
+  if (value === 'ctr') return 'center';
+  if (value === 'r') return 'right';
+  if (value === 'just') return 'justify';
+  if (value === 'l') return 'left';
+  return value || 'left';
 }
 
 function buildBaseStyle(xf) {

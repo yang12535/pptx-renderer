@@ -154,6 +154,11 @@ html, body {
   to   { opacity: 1; transform: scaleX(1); transform-origin: left center; }
 }
 
+@keyframes tableRowReveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* 幻灯片激活时，子元素触发动画 */
 .slide .p-el {
   opacity: 0;
@@ -174,6 +179,25 @@ html, body {
 .anim-zoomIn    { animation-name: zoomIn; }
 .anim-growIn    { animation-name: growIn; transform-origin: bottom center; }
 .anim-expandRight { animation-name: expandRight; transform-origin: left center; }
+
+.slide .p-table tr {
+  opacity: 0;
+}
+
+.slide.active .p-table tr {
+  animation: tableRowReveal 0.42s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+.slide.active .p-table tr:nth-child(1) { animation-delay: 0.82s; }
+.slide.active .p-table tr:nth-child(2) { animation-delay: 0.88s; }
+.slide.active .p-table tr:nth-child(3) { animation-delay: 0.94s; }
+.slide.active .p-table tr:nth-child(4) { animation-delay: 1.00s; }
+.slide.active .p-table tr:nth-child(5) { animation-delay: 1.06s; }
+.slide.active .p-table tr:nth-child(6) { animation-delay: 1.12s; }
+.slide.active .p-table tr:nth-child(7) { animation-delay: 1.18s; }
+.slide.active .p-table tr:nth-child(8) { animation-delay: 1.24s; }
+.slide.active .p-table tr:nth-child(9) { animation-delay: 1.30s; }
+.slide.active .p-table tr:nth-child(10) { animation-delay: 1.36s; }
 
 /* ── 控制栏 ── */
 #controls {
@@ -347,6 +371,9 @@ html, body {
   }
   /* 动画被禁用后，强制显示当前幻灯片内的所有元素 */
   .slide.active .p-el {
+    opacity: 1 !important;
+  }
+  .slide.active .p-table tr {
     opacity: 1 !important;
   }
 }
