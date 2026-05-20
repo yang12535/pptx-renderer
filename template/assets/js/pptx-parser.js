@@ -533,7 +533,7 @@
     if (solidFill) style.fill = colorToCss(solidFill, theme);
 
     var border = parseTableBorder(tcPr, theme);
-    if (border) style.border = border;
+    if (border) style.borders = border;
 
     var margins = {};
     if (tcPr._marL !== undefined && tcPr._marL !== null) margins.left = emuToPx(tcPr._marL);
@@ -569,10 +569,16 @@
 
     var chartType = null;
     var chartNode = null;
+    var chartNodes = [];
     var typeKeys = ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart', 'doughnutChart', 'radarChart', 'stockChart', 'surfaceChart'];
     for (var i = 0; i < typeKeys.length; i++) {
       var node = child(plotArea, typeKeys[i]) || plotArea['c:' + typeKeys[i]];
-      if (node) { chartType = typeKeys[i]; chartNode = node; break; }
+      if (node) {
+        chartType = typeKeys[i];
+        chartNodes = toArray(node);
+        chartNode = chartNodes[0];
+        break;
+      }
     }
     if (!chartType) return null;
 
@@ -629,18 +635,42 @@
       return textValueToString(v);
     }
 
+    function extractIndexedPoints(points) {
+      var values = [];
+      var sawIndex = false;
+      for (var pi = 0; pi < points.length; pi++) {
+        var pt = points[pi];
+        var hasIdx = pt && pt._idx !== undefined && pt._idx !== null;
+        var idx = hasIdx ? Number(pt._idx) : NaN;
+        var value = extractText(pt);
+        if (Number.isInteger(idx) && idx >= 0) {
+          values[idx] = value;
+          sawIndex = true;
+        } else {
+          values.push(value);
+        }
+      }
+      if (sawIndex) {
+        for (var vi = 0; vi < values.length; vi++) {
+          if (values[vi] === undefined) values[vi] = null;
+        }
+      }
+      return values;
+    }
+
     function extractCacheValues(cache) {
       if (!cache) return [];
       var directPts = toArray(child(cache, 'pt') || cache['c:pt']);
       if (directPts.length) {
-        return directPts.map(function (pt) { return extractText(pt); });
+        return extractIndexedPoints(directPts);
       }
 
       var levels = toArray(child(cache, 'lvl') || cache['c:lvl']);
       var values = [];
       for (var li = 0; li < levels.length; li++) {
         var levelPts = toArray(child(levels[li], 'pt') || levels[li]['c:pt']);
-        for (var pi = 0; pi < levelPts.length; pi++) values.push(extractText(levelPts[pi]));
+        var levelValues = extractIndexedPoints(levelPts);
+        for (var lvi = 0; lvi < levelValues.length; lvi++) values.push(levelValues[lvi]);
       }
       return values;
     }
@@ -670,7 +700,11 @@
       return [];
     }
 
-    var seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
+    var seriesList = [];
+    for (var ni = 0; ni < chartNodes.length; ni++) {
+      var nodeSeries = toArray(child(chartNodes[ni], 'ser') || chartNodes[ni]['c:ser']);
+      for (var nsi = 0; nsi < nodeSeries.length; nsi++) seriesList.push(nodeSeries[nsi]);
+    }
     var series = [];
     for (var s = 0; s < seriesList.length; s++) {
       var ser = seriesList[s];

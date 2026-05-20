@@ -341,8 +341,8 @@ function parseGraphicFrame(gf, theme, relsMap) {
     id: null,
     name: '',
   };
-  if (chart && (chart['r:id'] || chart['_r:id'])) {
-    result.chartRelId = chart['r:id'] || chart['_r:id'];
+  if (chart && chart['_r:id']) {
+    result.chartRelId = chart['_r:id'];
   }
   if (tbl) {
     result.tableData = parseTableData(tbl, theme);
@@ -417,7 +417,7 @@ function parseTableCellStyle(tc, theme) {
   if (solidFill) style.fill = colorToCss(solidFill, theme);
 
   const border = parseTableBorder(tcPr, theme);
-  if (border) style.border = border;
+  if (border) style.borders = border;
 
   const margins = {};
   if (tcPr._marL !== undefined && tcPr._marL !== null) margins.left = emuToPx(tcPr._marL);
@@ -453,10 +453,16 @@ function parseChartXml(xmlStr, theme) {
 
   let chartType = null;
   let chartNode = null;
+  let chartNodes = [];
   const typeKeys = ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart', 'doughnutChart', 'radarChart', 'stockChart', 'surfaceChart'];
   for (const tk of typeKeys) {
     const node = child(plotArea, tk) || plotArea['c:' + tk];
-    if (node) { chartType = tk; chartNode = node; break; }
+    if (node) {
+      chartType = tk;
+      chartNodes = toArray(node);
+      chartNode = chartNodes[0];
+      break;
+    }
   }
   if (!chartType) return null;
 
@@ -513,16 +519,38 @@ function parseChartXml(xmlStr, theme) {
     return textValueToString(v);
   }
 
+  function extractIndexedPoints(points) {
+    const values = [];
+    let sawIndex = false;
+    for (const pt of points) {
+      const hasIdx = pt && pt._idx !== undefined && pt._idx !== null;
+      const idx = hasIdx ? Number(pt._idx) : NaN;
+      const value = extractText(pt);
+      if (Number.isInteger(idx) && idx >= 0) {
+        values[idx] = value;
+        sawIndex = true;
+      } else {
+        values.push(value);
+      }
+    }
+    if (sawIndex) {
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === undefined) values[i] = null;
+      }
+    }
+    return values;
+  }
+
   function extractCacheValues(cache) {
     if (!cache) return [];
     const directPts = toArray(child(cache, 'pt') || cache['c:pt']);
-    if (directPts.length) return directPts.map(extractText);
+    if (directPts.length) return extractIndexedPoints(directPts);
 
     const levels = toArray(child(cache, 'lvl') || cache['c:lvl']);
     const values = [];
     for (const lvl of levels) {
       const levelPts = toArray(child(lvl, 'pt') || lvl['c:pt']);
-      values.push(...levelPts.map(extractText));
+      values.push(...extractIndexedPoints(levelPts));
     }
     return values;
   }
@@ -550,7 +578,7 @@ function parseChartXml(xmlStr, theme) {
     return [];
   }
 
-  const seriesList = toArray(child(chartNode, 'ser') || chartNode['c:ser']);
+  const seriesList = chartNodes.flatMap(node => toArray(child(node, 'ser') || node['c:ser']));
   const series = [];
   for (const ser of seriesList) {
     let sName = '';

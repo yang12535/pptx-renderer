@@ -9,8 +9,6 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.10",
-    "fast-xml-parser": "^4.3.4",
-    "jszip": "^3.10.1"
-  },
-  "devDependencies": {}
+    "fast-xml-parser": "^4.3.4"
+  }
 }

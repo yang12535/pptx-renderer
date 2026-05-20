@@ -58,6 +58,7 @@
 - [x] PR squash merge 到 master
 - [x] 2026-05-20: 修复测试 PPTX 中年份字段丢失、图表/表格 placeholder 残留和表格过密问题
 - [x] 2026-05-20: 按视频参考补齐图表数据绘制动画，柱状图弹出、折线图逐点展开
+- [x] 2026-05-20: 修复 PR review 指出的多 chart group、稀疏 chart cache、表格边框字段和未使用 jszip 依赖问题
 
 ---
 

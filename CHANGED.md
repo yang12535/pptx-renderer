@@ -45,6 +45,10 @@
 - 移除 TODO 中的个人绝对路径，并统一主线分支名称为仓库实际的 `master`。
 - 修复含负值的横向柱状图被 `min: 0` 数值轴裁掉的问题，正负发散图现在按真实数据范围显示。
 - 移除 `prefers-reduced-motion` 对查看器动画的禁用规则，保证系统关闭动画时 PPTX 入场、表格和图表动画仍会播放。
+- 修复同一 plot area 内多个同类型 chart group 时只读取第一个或读不到 series 的问题，现在会合并同类型 group 的 series。
+- 修复 chart cache 中稀疏 `<c:pt idx="...">` 被压缩导致分类或数值错位的问题，按原始 idx 补 `null` 保留空洞。
+- 修复表格单元格边框解析字段名不匹配的问题，解析器输出 `style.borders` 供渲染器逐边应用。
+- 移除未被 Node 代码使用的 `jszip` npm 依赖，浏览器上传模式继续使用 vendored `template/assets/vendor/jszip.min.js`。
 
 ### Verified
 
@@ -57,6 +61,9 @@
 - `node --check template/assets/js/viewer.js`
 - `node --check dist/assets/js/viewer.js`
 - `npm run build -- dist`
+- Node 构造 XML 验证 `parseChartXml()`：
+  - 同一 plot area 内多个 `lineChart` group 会合并 series。
+  - 稀疏 `idx` chart cache 会保留 `null` 空洞。
 - Playwright/Chrome 上传模式验证：在 `reduced-motion: reduce` 环境下上传测试 PPTX，生成 10 页并进入 viewer，active 元素动画名仍为 `fadeIn` / `slideIn...` 而非 `none`。
 - Playwright/Chrome 折线图验证：在 `reduced-motion: reduce` 环境下第 3 页折线图从 0 个点逐步展开到 14 个点，不会瞬间铺满。
 - `rg -n "p-placeholder|\[chart\]|\[graphic\]" dist/index.html` 无匹配
