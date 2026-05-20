@@ -20,10 +20,16 @@
 npm install
 ```
 
-构建测试 PPTX：
+构建上传模式产物（默认，浏览器端上传 PPTX 预览）：
 
 ```powershell
-npm run build -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist
+npm run build -- dist
+```
+
+构建静态预渲染产物（可选，将 PPTX 预渲染为静态 HTML）：
+
+```powershell
+npm run build:static -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist
 ```
 
 启动本地静态服务：

@@ -282,6 +282,10 @@
       window.clearTimeout(container._chartRevealTimeout);
       container._chartRevealTimeout = null;
     }
+    if (container._echartsInstance) {
+      container._echartsInstance.dispose();
+      container._echartsInstance = null;
+    }
   }
 
   function animateLineChart(container, instance, data) {

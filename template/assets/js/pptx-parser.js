@@ -863,6 +863,11 @@
     return s;
   }
 
+  function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   function renderLine(el, animClass, animDelay) {
     var xf = el.xfrm;
     var line = el.line || { width: 1, color: '#000', dash: null };
@@ -1028,13 +1033,15 @@
                       if (target.startsWith('../media/')) {
                         var mediaPath = target.replace(/^\.\.\//, 'ppt/');
                         var mediaName = mediaPath.split('/').pop();
-                        if (!mediaMap[rid]) {
+                        if (!mediaMap[mediaPath]) {
                           var mp = zip.file(mediaPath).async('blob').then(function (blob) {
-                            return blobToDataURL(blob).then(function (url) { mediaMap[rid] = url; });
+                            return blobToDataURL(blob).then(function (url) { mediaMap[mediaPath] = url; });
                           });
                           mediaPromises.push(mp);
                         }
-                        resolvedRels[rid] = function (r) { return mediaMap[r]; };
+                        resolvedRels[rid] = (function (mp) {
+                          return function () { return mediaMap[mp]; };
+                        })(mediaPath);
                       } else {
                         resolvedRels[rid] = target;
                       }
@@ -1043,7 +1050,7 @@
                       // 解析 rels 中的函数引用转为实际值
                       var finalRels = {};
                       for (var rid in resolvedRels) {
-                        finalRels[rid] = typeof resolvedRels[rid] === 'function' ? resolvedRels[rid](rid) : resolvedRels[rid];
+                        finalRels[rid] = typeof resolvedRels[rid] === 'function' ? resolvedRels[rid]() : resolvedRels[rid];
                       }
                       var slideResult = parseSlide(slideXml, theme, finalRels);
                       console.log("[Parser] slide parsed, elements:", slideResult ? slideResult.elements.length : 0);

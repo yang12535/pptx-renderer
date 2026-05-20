@@ -175,8 +175,19 @@ function copyAssets(srcDir, dstDir) {
 function resolveRelationshipTarget(sourcePath, target, packageRoot) {
   if (!target) return target;
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
-  if (target.startsWith('/')) return path.join(packageRoot, target.slice(1));
-  return path.resolve(path.dirname(sourcePath), target);
+  var resolved;
+  if (target.startsWith('/')) {
+    resolved = path.join(packageRoot, target.slice(1));
+  } else {
+    resolved = path.resolve(path.dirname(sourcePath), target);
+  }
+  var realPackageRoot = path.resolve(packageRoot);
+  var realResolved = path.resolve(resolved);
+  if (!realResolved.startsWith(realPackageRoot + path.sep) && realResolved !== realPackageRoot) {
+    console.warn('Path traversal blocked:', target, '->', resolved);
+    return '';
+  }
+  return resolved;
 }
 
 function replaceTemplateTokens(template, replacements) {
@@ -210,6 +221,12 @@ if (require.main === module) {
       process.exit(1);
     });
   } else {
+    if (args.length > 0 && args[0].endsWith('.pptx')) {
+      console.error('❌ Upload mode does not accept a .pptx file.');
+      console.error('   To build static output: node build.js --static <pptx> [outDir]');
+      console.error('   To build upload mode:   node build.js [outDir]');
+      process.exit(1);
+    }
     buildUpload(output).catch(err => {
       console.error('❌ Build failed:', err.message);
       console.error(err.stack);
