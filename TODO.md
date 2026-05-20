@@ -113,6 +113,6 @@
 ## 📦 打包 & 分发
 
 - [x] dist 目录可独立运行（双击 index.html 或 python http.server）
-- [x] 打包到 /home/yangtim/ls/pptx-renderer-dist.zip
+- [x] 可打包为 `pptx-renderer-dist.zip`
 - [x] 分支推送到 GitHub（feat/browser-upload）
-- [ ] PR 合并回 main 后打 tag 或记录 release note
+- [ ] PR 合并回 master 后打 tag 或记录 release note

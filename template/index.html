@@ -34,9 +34,10 @@
   transition: border-color 0.2s, background 0.2s;
   cursor: pointer;
 }
-.drop-area:hover, .drop-area.dragover {
+.drop-area:hover, .drop-area:focus-visible, .drop-area.dragover {
   border-color: #4dabf7;
   background: rgba(77,171,247,0.08);
+  outline: none;
 }
 .drop-area svg {
   width: 48px;
@@ -80,8 +81,8 @@
 <body>
 
 <!-- 上传区域 -->
-<div id="upload-zone">
-  <div class="drop-area" id="drop-area">
+<div id="upload-zone" class="{{UPLOAD_ZONE_CLASS}}">
+  <div class="drop-area" id="drop-area" role="button" tabindex="0" aria-label="打开 PPTX 文件，点击选择或拖拽文件到此处">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
     <h2>打开 PPTX 文件</h2>
     <p>点击选择或拖拽文件到此处</p>
@@ -92,14 +93,14 @@
 </div>
 
 <!-- 幻灯片舞台 -->
-<div id="stage" style="display:none;">
+<div id="stage" style="{{STAGE_STYLE}}">
   <div id="stage-inner" data-width="{{SLIDE_WIDTH}}" data-height="{{SLIDE_HEIGHT}}">
     {{SLIDES}}
   </div>
 </div>
 
 <!-- 控制栏 -->
-<div id="controls" style="display:none;">
+<div id="controls" style="{{CONTROLS_STYLE}}">
   <div id="progress-bar"></div>
   <button id="prev" aria-label="上一页">←</button>
   <span id="page-info">1 / {{SLIDE_COUNT}}</span>
@@ -110,9 +111,9 @@
 <div id="thumbnails" role="navigation" aria-label="幻灯片缩略图"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="./assets/vendor/jszip.min.js"></script>
-<script src="./assets/vendor/echarts.min.js"></script>
-<script src="./assets/js/pptx-parser.js"></script>
-<script src="./assets/js/viewer.js"></script>
+<script src="./assets/vendor/jszip.min.js" defer onerror="console.error('JSZip 加载失败')"></script>
+<script src="./assets/vendor/echarts.min.js" defer onerror="console.error('ECharts 加载失败')"></script>
+<script src="./assets/js/pptx-parser.js" defer></script>
+<script src="./assets/js/viewer.js" defer></script>
 </body>
 </html>

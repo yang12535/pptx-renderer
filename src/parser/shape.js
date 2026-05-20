@@ -397,9 +397,7 @@ function parseTableData(tblObj, theme) {
         for (const para of pList) {
           const rList = toArray(child(para, 'r') || para['a:r']);
           for (const run of rList) {
-            const t = child(run, 't') || run['a:t'];
-            if (typeof t === 'string') text += t;
-            else if (t && t['#text']) text += t['#text'];
+            text += textValueToString(child(run, 't') || run['a:t']);
           }
         }
       }
@@ -482,18 +480,14 @@ function parseChartXml(xmlStr, theme) {
     if (p) {
       const r = child(p, 'r') || p['a:r'];
       const t = r && (child(r, 't') || r['a:t']);
-      if (typeof t === 'string') title = t;
-      else if (t && t['#text']) title = t['#text'];
+      title = textValueToString(t);
     }
   }
 
   function extractText(node) {
     if (!node) return '';
     const v = child(node, 'v') || node['c:v'];
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number') return String(v);
-    if (v && v['#text']) return v['#text'];
-    return '';
+    return textValueToString(v);
   }
 
   function extractCacheValues(cache) {
@@ -582,7 +576,8 @@ function getShowVal(dLbls) {
   if (!dLbls) return null;
   const showVal = child(dLbls, 'showVal') || dLbls['c:showVal'];
   if (!showVal) return null;
-  return showVal._val === true || showVal._val === 1 || showVal._val === '1';
+  const val = showVal._val;
+  return val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
 }
 
 function parseChartSeriesColor(ser, theme) {

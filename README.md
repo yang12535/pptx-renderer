@@ -51,6 +51,13 @@ template/assets/js/         浏览器端解析器与查看器交互
 ls/                         本地测试 PPTX
 ```
 
+## Vendor 资源
+
+浏览器上传模式依赖以下前端库，当前以静态文件形式放在 `template/assets/vendor/`，构建时复制到 `dist/assets/vendor/`：
+
+- `jszip.min.js`: JSZip 3.10.1，用于浏览器端读取 PPTX zip 包。
+- `echarts.min.js`: Apache ECharts 5.6.0，用于渲染 PPTX 图表。
+
 ## 当前验证样例
 
 本轮重点验证文件：

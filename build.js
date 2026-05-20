@@ -25,6 +25,7 @@ async function build(inputPptx, outDir) {
   fs.mkdirSync(outDir, { recursive: true });
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-renderer-'));
+  try {
   extractPptx(inputPptx, tempDir);
 
   // 2. 解析演示文稿
@@ -92,23 +93,18 @@ async function build(inputPptx, outDir) {
 
   // 7. 组装页面
   const templateHtml = fs.readFileSync(path.join(PATHS.templateDir, 'index.html'), 'utf-8');
-  let finalHtml = templateHtml
-    .replace('{{SLIDES}}', slidesHtml)
-    .replace('{{SLIDE_COUNT}}', String(slidesData.length))
-    .replace('{{SLIDE_WIDTH}}', String(slideW))
-    .replace('{{SLIDE_HEIGHT}}', String(slideH));
-
-  if (slidesData.length > 0) {
-    finalHtml = finalHtml
-      .replace('<div id="upload-zone">', '<div id="upload-zone" class="hidden">')
-      .replace('<div id="stage" style="display:none;">', '<div id="stage">')
-      .replace('<div id="controls" style="display:none;">', '<div id="controls">');
-  }
+  const hasSlides = slidesData.length > 0;
+  let finalHtml = replaceTemplateTokens(templateHtml, {
+    '{{SLIDES}}': slidesHtml,
+    '{{SLIDE_COUNT}}': String(slidesData.length),
+    '{{SLIDE_WIDTH}}': String(slideW),
+    '{{SLIDE_HEIGHT}}': String(slideH),
+    '{{UPLOAD_ZONE_CLASS}}': hasSlides ? 'hidden' : '',
+    '{{STAGE_STYLE}}': hasSlides ? '' : 'display:none;',
+    '{{CONTROLS_STYLE}}': hasSlides ? '' : 'display:none;',
+  });
 
   fs.writeFileSync(path.join(outDir, 'index.html'), finalHtml, 'utf-8');
-
-  // 8. 清理临时文件
-  fs.rmSync(tempDir, { recursive: true });
 
   console.log('✅ Build complete:', outDir);
   console.log('   Output:');
@@ -117,6 +113,9 @@ async function build(inputPptx, outDir) {
   console.log('   - assets/js/viewer.js');
   if (fs.existsSync(mediaOutDir)) {
     console.log('   - media/ (' + fs.readdirSync(mediaOutDir).length + ' files)');
+  }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
@@ -154,6 +153,17 @@ function resolveRelationshipTarget(sourcePath, target, packageRoot) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
   if (target.startsWith('/')) return path.join(packageRoot, target.slice(1));
   return path.resolve(path.dirname(sourcePath), target);
+}
+
+function replaceTemplateTokens(template, replacements) {
+  let output = template;
+  for (const [token, value] of Object.entries(replacements)) {
+    if (!output.includes(token)) {
+      throw new Error('Template token not found: ' + token);
+    }
+    output = output.split(token).join(value);
+  }
+  return output;
 }
 
 if (require.main === module) {

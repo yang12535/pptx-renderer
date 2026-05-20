@@ -7,3 +7,4 @@ test_rich_temp/
 !test.pptx
 !test-rich.pptx
 test_img.png
+*.bak

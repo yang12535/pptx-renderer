@@ -25,6 +25,7 @@
   var controlsTimer = null;
   var thumbnailsBuilt = false;
   var viewerEventsBound = false;
+  var MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
 
   // ── DOM 引用 ──
   var stage = document.getElementById('stage');
@@ -80,6 +81,12 @@
     if (!dropArea || !fileInput) return;
 
     dropArea.addEventListener('click', function () { fileInput.click(); });
+    dropArea.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
     fileInput.addEventListener('change', function (e) {
       if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
     });
@@ -103,6 +110,10 @@
     console.log('[Upload] file selected:', file.name, file.size);
     if (!file.name.endsWith('.pptx')) {
       showUploadError('请选择 .pptx 格式的文件');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_SIZE) {
+      showUploadError('文件过大，请上传小于 100MB 的 PPTX 文件');
       return;
     }
     showUploadError('');
