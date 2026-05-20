@@ -221,7 +221,7 @@ if (require.main === module) {
     });
   } else {
     const output = args[0] || 'dist';
-    if (args.length > 0 && args[0].endsWith('.pptx')) {
+    if (args.length > 0 && args[0].toLowerCase().endsWith('.pptx')) {
       console.error('❌ Upload mode does not accept a .pptx file.');
       console.error('   To build static output: node build.js --static <pptx> [outDir]');
       console.error('   To build upload mode:   node build.js [outDir]');

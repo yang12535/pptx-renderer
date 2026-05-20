@@ -351,6 +351,7 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .slide,
   .slide .p-el,
+  .slide .p-table tr,
   #stage-inner,
   #controls,
   #thumbnails,

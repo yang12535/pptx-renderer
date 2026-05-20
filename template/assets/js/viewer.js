@@ -114,7 +114,7 @@
 
   function handleFile(file) {
     console.log('[Upload] file selected:', file.name, file.size);
-    if (!file.name.endsWith('.pptx')) {
+    if (!file.name.toLowerCase().endsWith('.pptx')) {
       showUploadError('请选择 .pptx 格式的文件');
       return;
     }
@@ -247,9 +247,6 @@
       try {
         var data = JSON.parse(dataStr);
         stopChart(container);
-        if (container._echartsInstance) {
-          container._echartsInstance.dispose();
-        }
         var instance = echarts.init(container);
         instance.setOption(buildEchartsOption(data, 'initial'), true);
         container._echartsInstance = instance;
@@ -310,7 +307,7 @@
       instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
 
       if (visiblePoints >= pointCount) {
-        stopChart(container);
+        clearChartTimers(container);
         container._chartRevealTimeout = window.setTimeout(function () {
           if (container._echartsInstance === instance) {
             instance.setOption(buildEchartsOption(data, 'reveal'), false);
