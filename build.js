@@ -207,10 +207,9 @@ if (require.main === module) {
   const staticIdx = args.indexOf('--static');
   if (staticIdx !== -1) args.splice(staticIdx, 1);
 
-  const output = args[args.length - 1] || 'dist';
-
   if (isStatic) {
     const input = args[0];
+    const output = args[1] || 'dist';
     if (!input) {
       console.error('❌ Usage: node build.js --static <pptx> [outDir]');
       process.exit(1);
@@ -221,6 +220,7 @@ if (require.main === module) {
       process.exit(1);
     });
   } else {
+    const output = args[0] || 'dist';
     if (args.length > 0 && args[0].endsWith('.pptx')) {
       console.error('❌ Upload mode does not accept a .pptx file.');
       console.error('   To build static output: node build.js --static <pptx> [outDir]');

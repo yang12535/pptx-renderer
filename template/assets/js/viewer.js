@@ -273,7 +273,7 @@
     charts.forEach(stopChart);
   }
 
-  function stopChart(container) {
+  function clearChartTimers(container) {
     if (container._chartRevealTimer) {
       window.clearInterval(container._chartRevealTimer);
       container._chartRevealTimer = null;
@@ -282,6 +282,10 @@
       window.clearTimeout(container._chartRevealTimeout);
       container._chartRevealTimeout = null;
     }
+  }
+
+  function stopChart(container) {
+    clearChartTimers(container);
     if (container._echartsInstance) {
       container._echartsInstance.dispose();
       container._echartsInstance = null;
@@ -293,7 +297,7 @@
     var pointCount = Math.max(1, categories.length);
     var visiblePoints = 0;
 
-    stopChart(container);
+    clearChartTimers(container);
     instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
 
     container._chartRevealTimer = window.setInterval(function () {
