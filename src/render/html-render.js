@@ -151,8 +151,17 @@ function renderTable(tableData, availableHeight) {
 
 function buildTableCellStyle(cell, rowHeight) {
   const cellStyle = cell.style || {};
-  const border = cellStyle.border || { width: 1, color: '#d9d9d9' };
-  let s = `border:${border.width || 1}px solid ${border.color || '#d9d9d9'};`;
+  let s = '';
+  const borders = cellStyle.borders;
+  if (borders) {
+    for (const side in borders) {
+      const b = borders[side];
+      s += `border-${side}:${b.width || 1}px solid ${b.color || '#d9d9d9'};`;
+    }
+  } else {
+    const border = cellStyle.border || { width: 1, color: '#d9d9d9' };
+    s += `border:${border.width || 1}px solid ${border.color || '#d9d9d9'};`;
+  }
   s += `background:${cellStyle.fill || '#fff'};`;
   s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
   if (rowHeight) s += `height:${rowHeight}px;`;

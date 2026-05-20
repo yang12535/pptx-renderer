@@ -420,26 +420,27 @@ function parseTableCellStyle(tc, theme) {
   if (border) style.border = border;
 
   const margins = {};
-  if (tcPr._marL) margins.left = emuToPx(tcPr._marL);
-  if (tcPr._marR) margins.right = emuToPx(tcPr._marR);
-  if (tcPr._marT) margins.top = emuToPx(tcPr._marT);
-  if (tcPr._marB) margins.bottom = emuToPx(tcPr._marB);
+  if (tcPr._marL !== undefined && tcPr._marL !== null) margins.left = emuToPx(tcPr._marL);
+  if (tcPr._marR !== undefined && tcPr._marR !== null) margins.right = emuToPx(tcPr._marR);
+  if (tcPr._marT !== undefined && tcPr._marT !== null) margins.top = emuToPx(tcPr._marT);
+  if (tcPr._marB !== undefined && tcPr._marB !== null) margins.bottom = emuToPx(tcPr._marB);
   if (Object.keys(margins).length > 0) style.margins = margins;
 
   return style;
 }
 
 function parseTableBorder(tcPr, theme) {
-  const sides = ['lnL', 'lnR', 'lnT', 'lnB'];
-  for (const side of sides) {
-    const ln = child(tcPr, side) || tcPr['a:' + side];
+  const sideMap = { lnL: 'left', lnR: 'right', lnT: 'top', lnB: 'bottom' };
+  const borders = {};
+  for (const key in sideMap) {
+    const ln = child(tcPr, key) || tcPr['a:' + key];
     if (!ln) continue;
     const parsed = parseLine(ln, theme);
     if (parsed && parsed.color && parsed.color !== 'transparent') {
-      return parsed;
+      borders[sideMap[key]] = parsed;
     }
   }
-  return null;
+  return Object.keys(borders).length > 0 ? borders : null;
 }
 
 function parseChartXml(xmlStr, theme) {
@@ -577,7 +578,7 @@ function parseChartXml(xmlStr, theme) {
       const valueTexts = extractChartPoints(val, ['numRef', 'strRef', 'numLit', 'strLit'], ['numCache', 'strCache']);
       for (const valueText of valueTexts) {
         const num = parseFloat(valueText);
-        values.push(isNaN(num) ? 0 : num);
+        values.push(isNaN(num) ? null : num);
       }
     }
 

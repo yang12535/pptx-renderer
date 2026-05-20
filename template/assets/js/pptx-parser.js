@@ -536,27 +536,27 @@
     if (border) style.border = border;
 
     var margins = {};
-    if (tcPr._marL) margins.left = emuToPx(tcPr._marL);
-    if (tcPr._marR) margins.right = emuToPx(tcPr._marR);
-    if (tcPr._marT) margins.top = emuToPx(tcPr._marT);
-    if (tcPr._marB) margins.bottom = emuToPx(tcPr._marB);
+    if (tcPr._marL !== undefined && tcPr._marL !== null) margins.left = emuToPx(tcPr._marL);
+    if (tcPr._marR !== undefined && tcPr._marR !== null) margins.right = emuToPx(tcPr._marR);
+    if (tcPr._marT !== undefined && tcPr._marT !== null) margins.top = emuToPx(tcPr._marT);
+    if (tcPr._marB !== undefined && tcPr._marB !== null) margins.bottom = emuToPx(tcPr._marB);
     if (Object.keys(margins).length > 0) style.margins = margins;
 
     return style;
   }
 
   function parseTableBorder(tcPr, theme) {
-    var sides = ['lnL', 'lnR', 'lnT', 'lnB'];
-    for (var i = 0; i < sides.length; i++) {
-      var side = sides[i];
-      var ln = child(tcPr, side) || tcPr['a:' + side];
+    var sideMap = { lnL: 'left', lnR: 'right', lnT: 'top', lnB: 'bottom' };
+    var borders = {};
+    for (var key in sideMap) {
+      var ln = child(tcPr, key) || tcPr['a:' + key];
       if (!ln) continue;
       var parsed = parseLine(ln, theme);
       if (parsed && parsed.color && parsed.color !== 'transparent') {
-        return parsed;
+        borders[sideMap[key]] = parsed;
       }
     }
-    return null;
+    return Object.keys(borders).length > 0 ? borders : null;
   }
 
   function parseChartXml(xmlStr, theme) {
@@ -699,7 +699,7 @@
         var valueTexts = extractChartPoints(val, ['numRef', 'strRef', 'numLit', 'strLit'], ['numCache', 'strCache']);
         for (var vi = 0; vi < valueTexts.length; vi++) {
           var num = parseFloat(valueTexts[vi]);
-          values.push(isNaN(num) ? 0 : num);
+          values.push(isNaN(num) ? null : num);
         }
       }
 
@@ -855,8 +855,17 @@
 
   function buildTableCellStyle(cell, rowHeight) {
     var cellStyle = cell.style || {};
-    var border = cellStyle.border || { width: 1, color: '#d9d9d9' };
-    var s = 'border:' + (border.width || 1) + 'px solid ' + (border.color || '#d9d9d9') + ';';
+    var s = '';
+    var borders = cellStyle.borders;
+    if (borders) {
+      for (var side in borders) {
+        var b = borders[side];
+        s += 'border-' + side + ':' + (b.width || 1) + 'px solid ' + (b.color || '#d9d9d9') + ';';
+      }
+    } else {
+      var border = cellStyle.border || { width: 1, color: '#d9d9d9' };
+      s += 'border:' + (border.width || 1) + 'px solid ' + (border.color || '#d9d9d9') + ';';
+    }
     s += 'background:' + (cellStyle.fill || '#fff') + ';';
     s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
     if (rowHeight) s += 'height:' + rowHeight + 'px;';
