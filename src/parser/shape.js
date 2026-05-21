@@ -1,4 +1,4 @@
-const { child, toArray } = require('../core/xml');
+const { parseXml, child, toArray } = require('../core/xml');
 const { emuToPx, angleToDegrees, fontSizeToPt } = require('../utils/units');
 const { colorToCss } = require('./color');
 
@@ -182,7 +182,7 @@ function parseParagraph(p, theme) {
   const children = Object.entries(p);
   for (const [key, val] of children) {
     if (key.startsWith('_')) continue;
-    if (key.endsWith(':r') || key === 'r') {
+    if (key.endsWith(':r') || key === 'r' || key.endsWith(':fld') || key === 'fld') {
       for (const r of toArray(val)) runs.push(parseRun(r, theme));
     } else if (key.endsWith(':br') || key === 'br') {
       runs.push({ type: 'br' });
@@ -195,10 +195,11 @@ function parseParagraph(p, theme) {
 
 function parseRun(r, theme) {
   const rPr = child(r, 'rPr') || r['a:rPr'];
-  const t = child(r, 't') || r['a:t'];
+  const parsedText = child(r, 't');
+  const rawText = parsedText !== undefined ? parsedText : r['a:t'];
   const run = {
     type: 'text',
-    text: typeof t === 'string' ? t : '',
+    text: textValueToString(rawText),
     bold: false,
     italic: false,
     underline: false,
@@ -227,6 +228,14 @@ function parseRun(r, theme) {
   }
 
   return run;
+}
+
+function textValueToString(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value['#text'] !== undefined) return textValueToString(value['#text']);
+  return '';
 }
 
 // ==================== 形状类型解析 ====================
@@ -324,15 +333,21 @@ function parseGraphicFrame(gf, theme, relsMap) {
   if (chart) subType = 'chart';
   if (tbl) subType = 'table';
 
-  return {
+  const result = {
     type: 'graphicFrame',
     subType,
     uri,
     xfrm,
     id: null,
     name: '',
-    // chart/table 详细数据后续按需解析
   };
+  if (chart && chart['_r:id']) {
+    result.chartRelId = chart['_r:id'];
+  }
+  if (tbl) {
+    result.tableData = parseTableData(tbl, theme);
+  }
+  return result;
 }
 
 function parseCxnSp(cxnSp, theme) {
@@ -357,6 +372,272 @@ function parseCxnSp(cxnSp, theme) {
   return shape;
 }
 
+function parseTableData(tblObj, theme) {
+  const grid = child(tblObj, 'tblGrid') || tblObj['a:tblGrid'];
+  const gridCols = grid ? toArray(child(grid, 'gridCol') || grid['a:gridCol']) : [];
+  const colWidths = gridCols.map(col => col._w ? emuToPx(col._w) : null);
+  const rows = [];
+  const trList = toArray(child(tblObj, 'tr') || tblObj['a:tr']);
+  for (const tr of trList) {
+    const cells = [];
+    const tcList = toArray(child(tr, 'tc') || tr['a:tc']);
+    for (const tc of tcList) {
+      let text = '';
+      const txBody = child(tc, 'txBody') || tc['a:txBody'];
+      const textBody = parseTxBody(txBody, theme);
+      const style = parseTableCellStyle(tc, theme);
+      if (textBody && style.margins) {
+        textBody.lIns = style.margins.left ?? textBody.lIns;
+        textBody.rIns = style.margins.right ?? textBody.rIns;
+        textBody.tIns = style.margins.top ?? textBody.tIns;
+        textBody.bIns = style.margins.bottom ?? textBody.bIns;
+      }
+      if (txBody) {
+        const pList = toArray(child(txBody, 'p') || txBody['a:p']);
+        for (const para of pList) {
+          const rList = toArray(child(para, 'r') || para['a:r']);
+          for (const run of rList) {
+            text += textValueToString(child(run, 't') || run['a:t']);
+          }
+        }
+      }
+      cells.push({ text, textBody, style });
+    }
+    rows.push({ height: tr._h ? emuToPx(tr._h) : null, cells });
+  }
+  return { colWidths, rows };
+}
+
+function parseTableCellStyle(tc, theme) {
+  const tcPr = child(tc, 'tcPr') || tc['a:tcPr'];
+  const style = {};
+  if (!tcPr) return style;
+
+  const solidFill = child(tcPr, 'solidFill') || tcPr['a:solidFill'];
+  if (solidFill) style.fill = colorToCss(solidFill, theme);
+
+  const border = parseTableBorder(tcPr, theme);
+  if (border) style.borders = border;
+
+  const margins = {};
+  if (tcPr._marL !== undefined && tcPr._marL !== null) margins.left = emuToPx(tcPr._marL);
+  if (tcPr._marR !== undefined && tcPr._marR !== null) margins.right = emuToPx(tcPr._marR);
+  if (tcPr._marT !== undefined && tcPr._marT !== null) margins.top = emuToPx(tcPr._marT);
+  if (tcPr._marB !== undefined && tcPr._marB !== null) margins.bottom = emuToPx(tcPr._marB);
+  if (Object.keys(margins).length > 0) style.margins = margins;
+
+  return style;
+}
+
+function parseTableBorder(tcPr, theme) {
+  const sideMap = { lnL: 'left', lnR: 'right', lnT: 'top', lnB: 'bottom' };
+  const borders = {};
+  for (const key in sideMap) {
+    const ln = child(tcPr, key) || tcPr['a:' + key];
+    if (!ln) continue;
+    const parsed = parseLine(ln, theme);
+    if (parsed && parsed.color && parsed.color !== 'transparent') {
+      borders[sideMap[key]] = parsed;
+    }
+  }
+  return Object.keys(borders).length > 0 ? borders : null;
+}
+
+function parseChartXml(xmlStr, theme) {
+  const doc = parseXml(xmlStr);
+  const chartSpace = child(doc, 'chartSpace') || doc['c:chartSpace'] || doc;
+  const chart = child(chartSpace, 'chart') || chartSpace['c:chart'];
+  if (!chart) return null;
+  const plotArea = child(chart, 'plotArea') || chart['c:plotArea'];
+  if (!plotArea) return null;
+
+  let chartType = null;
+  let chartNode = null;
+  let chartNodes = [];
+  const typeKeys = ['barChart', 'lineChart', 'pieChart', 'areaChart', 'scatterChart', 'doughnutChart', 'radarChart', 'stockChart', 'surfaceChart'];
+  for (const tk of typeKeys) {
+    const node = child(plotArea, tk) || plotArea['c:' + tk];
+    if (node) {
+      chartType = tk;
+      chartNodes = toArray(node);
+      chartNode = chartNodes[0];
+      break;
+    }
+  }
+  if (!chartType) return null;
+
+  let barDir = null;
+  if (chartType === 'barChart') {
+    const bd = child(chartNode, 'barDir') || chartNode['c:barDir'];
+    barDir = bd ? bd._val : 'col';
+  }
+
+  let grouping = null;
+  const grp = child(chartNode, 'grouping') || chartNode['c:grouping'];
+  if (grp) grouping = grp._val;
+
+  const showVal = getShowVal(child(chartNode, 'dLbls') || chartNode['c:dLbls']);
+
+  let title = '';
+  const titleNode = child(chart, 'title') || chart['c:title'];
+  if (titleNode) {
+    const tx = child(titleNode, 'tx') || titleNode['c:tx'];
+    title = extractRichText(tx);
+  }
+
+  function extractRichText(node) {
+    const pieces = [];
+    collectTextRuns(node, pieces);
+    return pieces.join('');
+  }
+
+  function collectTextRuns(node, pieces) {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      node.forEach(item => collectTextRuns(item, pieces));
+      return;
+    }
+    if (typeof node !== 'object') {
+      const value = textValueToString(node);
+      if (value) pieces.push(value);
+      return;
+    }
+
+    const t = child(node, 't') || node['a:t'];
+    const value = textValueToString(t);
+    if (value) pieces.push(value);
+
+    collectTextRuns(child(node, 'rich') || node['c:rich'] || node['a:rich'], pieces);
+    collectTextRuns(child(node, 'p') || node['a:p'], pieces);
+    collectTextRuns(child(node, 'r') || node['a:r'], pieces);
+    collectTextRuns(child(node, 'fld') || node['a:fld'], pieces);
+  }
+
+  function extractText(node) {
+    if (!node) return '';
+    const v = child(node, 'v') || node['c:v'];
+    return textValueToString(v);
+  }
+
+  function extractIndexedPoints(points) {
+    const values = [];
+    let sawIndex = false;
+    for (const pt of points) {
+      const hasIdx = pt && pt._idx !== undefined && pt._idx !== null;
+      const idx = hasIdx ? Number(pt._idx) : NaN;
+      const value = extractText(pt);
+      if (Number.isInteger(idx) && idx >= 0) {
+        values[idx] = value;
+        sawIndex = true;
+      } else {
+        values.push(value);
+      }
+    }
+    if (sawIndex) {
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === undefined) values[i] = null;
+      }
+    }
+    return values;
+  }
+
+  function extractCacheValues(cache) {
+    if (!cache) return [];
+    const directPts = toArray(child(cache, 'pt') || cache['c:pt']);
+    if (directPts.length) return extractIndexedPoints(directPts);
+
+    const levels = toArray(child(cache, 'lvl') || cache['c:lvl']);
+    const values = [];
+    for (const lvl of levels) {
+      const levelPts = toArray(child(lvl, 'pt') || lvl['c:pt']);
+      values.push(...extractIndexedPoints(levelPts));
+    }
+    return values;
+  }
+
+  function extractChartPoints(container, refNames, cacheNames) {
+    if (!container) return [];
+
+    let refs = [];
+    for (const refName of refNames) {
+      refs = refs.concat(toArray(child(container, refName) || container['c:' + refName]));
+    }
+    if (!refs.length) refs = [container];
+
+    for (const ref of refs) {
+      for (const cacheName of cacheNames) {
+        const cache = child(ref, cacheName) || ref['c:' + cacheName];
+        const values = extractCacheValues(cache);
+        if (values.length) return values;
+      }
+
+      const directValues = extractCacheValues(ref);
+      if (directValues.length) return directValues;
+    }
+
+    return [];
+  }
+
+  const seriesList = chartNodes.flatMap(node => toArray(child(node, 'ser') || node['c:ser']));
+  const series = [];
+  for (const ser of seriesList) {
+    let sName = '';
+    const tx = child(ser, 'tx') || ser['c:tx'];
+    if (tx) {
+      const strRef = child(tx, 'strRef') || tx['c:strRef'];
+      const strCache = strRef && (child(strRef, 'strCache') || strRef['c:strCache']);
+      const pt = strCache && (child(strCache, 'pt') || strCache['c:pt']);
+      if (pt) sName = extractText(pt);
+    }
+
+    const categories = [];
+    const cat = child(ser, 'cat') || ser['c:cat'];
+    if (cat) {
+      categories.push(...extractChartPoints(
+        cat,
+        ['strRef', 'numRef', 'multiLvlStrRef', 'strLit', 'numLit'],
+        ['strCache', 'numCache', 'multiLvlStrCache']
+      ));
+    }
+
+    const values = [];
+    const val = child(ser, 'val') || ser['c:val'];
+    if (val) {
+      const valueTexts = extractChartPoints(val, ['numRef', 'strRef', 'numLit', 'strLit'], ['numCache', 'strCache']);
+      for (const valueText of valueTexts) {
+        const num = parseFloat(valueText);
+        values.push(isNaN(num) ? null : num);
+      }
+    }
+
+    const serShowVal = getShowVal(child(ser, 'dLbls') || ser['c:dLbls']);
+    series.push({
+      name: sName,
+      categories,
+      values,
+      color: parseChartSeriesColor(ser, theme),
+      showVal: serShowVal === null ? showVal : serShowVal,
+    });
+  }
+
+  return { title, chartType, barDir, grouping, showVal, series };
+}
+
+function getShowVal(dLbls) {
+  if (!dLbls) return null;
+  const showVal = child(dLbls, 'showVal') || dLbls['c:showVal'];
+  if (!showVal) return null;
+  const val = showVal._val;
+  return val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
+}
+
+function parseChartSeriesColor(ser, theme) {
+  const spPr = child(ser, 'spPr') || ser['c:spPr'];
+  if (!spPr) return null;
+  const solidFill = child(spPr, 'solidFill') || spPr['a:solidFill'];
+  return solidFill ? colorToCss(solidFill, theme) : null;
+}
+
 module.exports = {
   parseShape,
   parsePicture,
@@ -365,4 +646,5 @@ module.exports = {
   parseXfrm,
   parseSpPr,
   parseTxBody,
+  parseChartXml,
 };

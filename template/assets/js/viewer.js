@@ -24,6 +24,9 @@
   var touchStartY = 0;
   var controlsTimer = null;
   var thumbnailsBuilt = false;
+  var viewerEventsBound = false;
+  var chartDependencyWarned = false;
+  var MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
 
   // ── DOM 引用 ──
   var stage = document.getElementById('stage');
@@ -37,15 +40,161 @@
   var thumbnails = document.getElementById('thumbnails');
   var toast = document.getElementById('toast');
 
+  // 上传区域
+  var uploadZone = document.getElementById('upload-zone');
+  var dropArea = document.getElementById('drop-area');
+  var fileInput = document.getElementById('file-input');
+  var uploadLoading = document.getElementById('upload-loading');
+  var uploadError = document.getElementById('upload-error');
+
   // ── 初始化 ──
   function init() {
-    slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
-    total = slides.length;
-    if (total === 0) return;
-
+    showInitialDependencyStatus();
     bindEvents();
+    refreshSlides();
+    if (total === 0) {
+      if (stage) stage.style.display = 'none';
+      if (controls) controls.style.display = 'none';
+      return;
+    }
+
+    if (stage) stage.style.display = '';
+    if (controls) controls.style.display = '';
     applyAutoScale();
     show(0, 0);
+  }
+
+  function refreshSlides() {
+    slides = Array.prototype.slice.call(document.querySelectorAll(CONFIG.slideSelector));
+    total = slides.length;
+  }
+
+  function reinit() {
+    bindEvents();
+    refreshSlides();
+    current = 0;
+    thumbnailsBuilt = false;
+    if (thumbnails) thumbnails.innerHTML = '';
+    if (total === 0) {
+      updateUI();
+      return;
+    }
+    updateUI();
+    applyAutoScale();
+    show(0, 0);
+  }
+
+  // ── 文件上传 ──
+  function bindUploadEvents() {
+    if (!dropArea || !fileInput) return;
+
+    dropArea.addEventListener('click', function () { fileInput.click(); });
+    dropArea.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+    fileInput.addEventListener('change', function (e) {
+      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    dropArea.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', function () {
+      dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      var files = e.dataTransfer.files;
+      if (files && files[0]) handleFile(files[0]);
+    });
+  }
+
+  function handleFile(file) {
+    console.log('[Upload] file selected:', file.name, file.size);
+    if (fileInput) fileInput.value = '';
+    if (!file.name.toLowerCase().endsWith('.pptx')) {
+      showUploadError('请选择 .pptx 格式的文件');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_SIZE) {
+      showUploadError('文件过大，请上传小于 100MB 的 PPTX 文件');
+      return;
+    }
+    var uploadDependencyError = getUploadDependencyError();
+    if (uploadDependencyError) {
+      showUploadError(uploadDependencyError);
+      return;
+    }
+    showUploadError('');
+    setUploadLoading(true);
+
+    Promise.resolve().then(function () {
+      if (typeof loadPptxFromFile !== 'function') {
+        throw new Error('PPTX 解析器未加载');
+      }
+      return loadPptxFromFile(file);
+    }).then(function (result) {
+      console.log('[Upload] parsed ok, slides:', result.slideCount, 'size:', result.slideW + 'x' + result.slideH);
+      setUploadLoading(false);
+
+      // 注入幻灯片
+      stageInner.innerHTML = result.slidesHtml;
+      stageInner.setAttribute('data-width', String(result.slideW));
+      stageInner.setAttribute('data-height', String(result.slideH));
+
+      // 切换视图
+      uploadZone.classList.add('hidden');
+      stage.style.display = '';
+      controls.style.display = '';
+
+      if (fileInput) fileInput.blur();
+      reinit();
+    }).catch(function (err) {
+      setUploadLoading(false);
+      showUploadError('解析失败: ' + (err.message || '未知错误'));
+      console.error('[Upload] parse error:', err);
+    });
+  }
+
+  function setUploadLoading(visible) {
+    if (uploadLoading) uploadLoading.classList.toggle('visible', visible);
+  }
+
+  function showUploadError(msg) {
+    if (uploadError) uploadError.textContent = msg;
+  }
+
+  function showInitialDependencyStatus() {
+    var uploadDependencyError = getUploadDependencyError();
+    if (uploadDependencyError) {
+      showUploadError(uploadDependencyError);
+      return;
+    }
+    if (typeof echarts === 'undefined') {
+      showChartDependencyWarning();
+    }
+  }
+
+  function getUploadDependencyError() {
+    if (!uploadZone || uploadZone.classList.contains('hidden')) return '';
+    if (typeof JSZip === 'undefined') return 'PPTX 解压组件未加载，请刷新页面后重试';
+    return '';
+  }
+
+  function showChartDependencyWarning() {
+    if (chartDependencyWarned) return;
+    chartDependencyWarned = true;
+    var message = '图表组件未加载，图表将无法显示';
+    if (uploadZone && !uploadZone.classList.contains('hidden')) {
+      showUploadError(message);
+    } else {
+      showToast(message);
+    }
   }
 
   // ── 幻灯片切换 ──
@@ -85,6 +234,7 @@
 
     // 更新 UI
     updateUI();
+    initCharts(nextSlide);
   }
 
   function next() {
@@ -109,18 +259,19 @@
       void el.offsetWidth;
       el.style.animationName = name || '';
     });
+    stopCharts(slideEl);
   }
 
   // ── UI 更新 ──
   function updateUI() {
     if (pageInfo) {
-      pageInfo.textContent = (current + 1) + ' / ' + total;
+      pageInfo.textContent = total ? (current + 1) + ' / ' + total : '0 / 0';
     }
     if (progressBar) {
-      progressBar.style.width = ((current + 1) / total * 100) + '%';
+      progressBar.style.width = (total ? ((current + 1) / total * 100) : 0) + '%';
     }
-    if (btnPrev) btnPrev.disabled = current === 0;
-    if (btnNext) btnNext.disabled = current === total - 1;
+    if (btnPrev) btnPrev.disabled = total <= 1 || current === 0;
+    if (btnNext) btnNext.disabled = total <= 1 || current >= total - 1;
 
     // 更新缩略图高亮
     if (thumbnails) {
@@ -131,9 +282,303 @@
     }
   }
 
+  // ── ECharts 图表 ──
+  function initCharts(slideEl) {
+    if (typeof echarts === 'undefined') {
+      showChartDependencyWarning();
+      return;
+    }
+    var charts = slideEl.querySelectorAll('.p-chart');
+    charts.forEach(function(container) {
+      var dataStr = container.getAttribute('data-chart');
+      if (!dataStr) return;
+      try {
+        var data = JSON.parse(dataStr);
+        stopChart(container);
+        var instance = echarts.init(container);
+        instance.setOption(buildEchartsOption(data, 'initial'), true);
+        container._echartsInstance = instance;
+        container._chartRevealTimeout = window.setTimeout(function () {
+          if (container._echartsInstance === instance) {
+            if (data.chartType === 'lineChart') {
+              animateLineChart(container, instance, data);
+            } else {
+              instance.setOption(buildEchartsOption(data, 'reveal'), false);
+            }
+          }
+        }, getChartRevealDelay(container));
+      } catch (e) {
+        console.error('ECharts init error:', e);
+      }
+    });
+  }
+
+  function stopCharts(slideEl) {
+    var charts = slideEl.querySelectorAll('.p-chart');
+    charts.forEach(stopChart);
+  }
+
+  function clearChartTimers(container) {
+    if (container._chartRevealTimer) {
+      window.clearInterval(container._chartRevealTimer);
+      container._chartRevealTimer = null;
+    }
+    if (container._chartRevealTimeout) {
+      window.clearTimeout(container._chartRevealTimeout);
+      container._chartRevealTimeout = null;
+    }
+  }
+
+  function stopChart(container) {
+    clearChartTimers(container);
+    if (container._echartsInstance) {
+      container._echartsInstance.dispose();
+      container._echartsInstance = null;
+    }
+  }
+
+  function animateLineChart(container, instance, data) {
+    var categories = (data.series[0] && data.series[0].categories) || [];
+    var pointCount = Math.max(1, categories.length);
+    var visiblePoints = 0;
+
+    clearChartTimers(container);
+    instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
+
+    container._chartRevealTimer = window.setInterval(function () {
+      if (container._echartsInstance !== instance) {
+        stopChart(container);
+        return;
+      }
+
+      visiblePoints += 1;
+      instance.setOption(buildEchartsOption(data, 'line-step', visiblePoints), false);
+
+      if (visiblePoints >= pointCount) {
+        clearChartTimers(container);
+        container._chartRevealTimeout = window.setTimeout(function () {
+          if (container._echartsInstance === instance) {
+            instance.setOption(buildEchartsOption(data, 'reveal'), false);
+          }
+        }, 220);
+      }
+    }, getLineRevealStepMs(pointCount));
+  }
+
+  function getLineRevealStepMs(pointCount) {
+    if (pointCount <= 6) return 320;
+    if (pointCount <= 10) return 260;
+    return 220;
+  }
+
+  function getChartRevealDelay(container) {
+    var rawDelay = (container.style.animationDelay || '0ms').trim();
+    var delay = parseFloat(rawDelay) || 0;
+    if (rawDelay.endsWith('s') && !rawDelay.endsWith('ms')) delay *= 1000;
+    return Math.max(260, delay + 220);
+  }
+
+  function buildEchartsOption(data, phase, visiblePoints) {
+    var categories = (data.series[0] && data.series[0].categories) || [];
+    var valueScale = buildValueScale(data.series);
+    var colors = data.series.map(function (s) { return s.color; }).filter(Boolean);
+    var isInitial = phase === 'initial';
+    var isLineStep = phase === 'line-step';
+    var option = {
+      animation: !isInitial,
+      animationDuration: 1800,
+      animationDurationUpdate: 1500,
+      animationEasing: 'cubicOut',
+      animationDelay: function (idx) { return Math.min(idx * 100, 900); },
+      animationDelayUpdate: function (idx) { return Math.min(idx * 100, 900); },
+      color: colors.length ? colors : undefined,
+      title: data.title ? { text: data.title, left: 'center', textStyle: { fontSize: 14, color: '#212529', fontWeight: 700 } } : undefined,
+      tooltip: { trigger: data.chartType === 'pieChart' ? 'item' : 'axis', renderMode: 'richText' },
+      legend: data.series.length > 1 ? { bottom: 0, textStyle: { fontSize: 11, color: '#495057' } } : undefined,
+      grid: { left: '8%', right: '10%', bottom: '10%', top: data.title ? '18%' : '10%', containLabel: true },
+    };
+
+    var series = [];
+
+    if (data.chartType === 'pieChart') {
+      var pieData = [];
+      if (data.series[0]) {
+        for (var i = 0; i < data.series[0].categories.length; i++) {
+          pieData.push({ name: data.series[0].categories[i], value: isInitial ? 0 : toChartNumber(data.series[0].values[i]) });
+        }
+      }
+      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 11, color: '#495057' } }];
+      option.xAxis = undefined;
+      option.yAxis = undefined;
+    } else if (data.chartType === 'barChart' && data.barDir === 'bar') {
+      option.grid = { left: '7%', right: '8%', bottom: '12%', top: data.title ? '18%' : '10%', containLabel: true };
+      option.xAxis = buildValueAxis(valueScale);
+      option.yAxis = buildCategoryAxis(categories);
+      for (var i = 0; i < data.series.length; i++) {
+        series.push(buildSeries(data.series[i], 'bar', 'right', i, phase));
+      }
+      option.series = series;
+    } else if (data.chartType === 'barChart' && data.barDir === 'col') {
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
+      for (var i = 0; i < data.series.length; i++) {
+        series.push(buildSeries(data.series[i], 'bar', 'top', i, phase));
+      }
+      option.series = series;
+    } else if (data.chartType === 'lineChart') {
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
+      for (var i = 0; i < data.series.length; i++) {
+        series.push(buildSeries(data.series[i], 'line', 'top', i, phase, visiblePoints));
+      }
+      option.series = series;
+    } else {
+      option.xAxis = buildCategoryAxis(categories);
+      option.yAxis = buildValueAxis(valueScale);
+      for (var i = 0; i < data.series.length; i++) {
+        series.push(buildSeries(data.series[i], 'bar', 'top', i, phase));
+      }
+      option.series = series;
+    }
+
+    if (isLineStep) {
+      option.animationDuration = 260;
+      option.animationDurationUpdate = 260;
+      option.animationDelay = 0;
+      option.animationDelayUpdate = 0;
+    }
+
+    return option;
+  }
+
+  function buildSeries(source, type, labelPosition, seriesIndex, phase, visiblePoints) {
+    var isInitial = phase === 'initial';
+    var isLineStep = phase === 'line-step';
+    var values = source.values || [];
+    var revealData = values.map(function (v, idx) {
+      if (type === 'line' && isLineStep) return idx < visiblePoints ? v : null;
+      if (!isInitial) return v;
+      if (type === 'line') return null;
+      return 0;
+    });
+    var duration = type === 'line' ? 2400 : 1700;
+    var delayStep = type === 'line' ? 95 : 150;
+    return {
+      name: source.name,
+      type: type,
+      data: revealData,
+      smooth: type === 'line' ? false : undefined,
+      showSymbol: type === 'line' ? true : undefined,
+      symbolSize: type === 'line' ? 6 : undefined,
+      connectNulls: type === 'line' ? false : undefined,
+      barMaxWidth: type === 'bar' ? 32 : undefined,
+      itemStyle: source.color ? { color: source.color } : undefined,
+      lineStyle: source.color ? { color: source.color, width: 2 } : undefined,
+      animation: !isInitial,
+      animationDuration: isLineStep ? 260 : duration,
+      animationDurationUpdate: isLineStep ? 260 : duration,
+      animationDelay: isLineStep ? 0 : function (idx) { return (seriesIndex || 0) * 180 + idx * delayStep; },
+      animationDelayUpdate: isLineStep ? 0 : function (idx) { return (seriesIndex || 0) * 180 + idx * delayStep; },
+      animationEasing: type === 'bar' ? 'backOut' : 'cubicOut',
+      label: source.showVal && !isInitial && !isLineStep ? {
+        show: true,
+        position: labelPosition,
+        color: '#495057',
+        fontSize: 12,
+        formatter: function (params) { return formatChartNumber(params.value); }
+      } : undefined
+    };
+  }
+
+  function buildCategoryAxis(categories) {
+    return {
+      type: 'category',
+      data: categories,
+      axisLabel: { fontSize: 12, color: '#495057' },
+      axisTick: { show: false },
+      axisLine: { onZero: false, lineStyle: { color: '#adb5bd' } }
+    };
+  }
+
+  function buildValueAxis(scale) {
+    return {
+      type: 'value',
+      min: scale.min,
+      max: scale.max,
+      interval: scale.interval,
+      axisLabel: { fontSize: 12, color: '#868e96', formatter: formatChartNumber },
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#adb5bd' } },
+      splitLine: { lineStyle: { color: '#e9ecef' } }
+    };
+  }
+
+  function buildValueScale(series) {
+    var min = 0;
+    var max = 0;
+    var hasValue = false;
+    series.forEach(function (s) {
+      (s.values || []).forEach(function (v) {
+        var n = toChartNumber(v);
+        if (n !== null) {
+          hasValue = true;
+          min = Math.min(min, n);
+          max = Math.max(max, n);
+        }
+      });
+    });
+
+    if (!hasValue) return { min: 0, max: 1, interval: 0.2 };
+
+    var paddedMin = min < 0 ? min * 1.15 : 0;
+    var paddedMax = max > 0 ? max * 1.15 : 0;
+    var extent = Math.max(Math.abs(paddedMin), Math.abs(paddedMax), 1);
+    var target = extent / 5.5;
+    var interval = niceInterval(target);
+    return {
+      min: Math.floor(paddedMin / interval) * interval,
+      max: Math.ceil(paddedMax / interval) * interval,
+      interval: interval
+    };
+  }
+
+  function niceInterval(target) {
+    var exponent = Math.floor(Math.log(target) / Math.LN10);
+    var base = Math.pow(10, exponent);
+    var steps = [1, 2, 5, 10];
+    for (var i = 0; i < steps.length; i++) {
+      var interval = steps[i] * base;
+      if (target <= interval) return interval;
+    }
+    return 10 * base;
+  }
+
+  function formatChartNumber(value) {
+    var n = toChartNumber(value);
+    if (n === null) return value == null ? '' : value;
+    if (Math.abs(n - Math.round(n)) < 0.0001) return String(Math.round(n));
+    return String(Math.round(n * 10) / 10);
+  }
+
+  function toChartNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    var n = Number(value);
+    return isFinite(n) ? n : null;
+  }
+
+  function resizeCharts() {
+    if (typeof echarts === 'undefined') return;
+    slides.forEach(function(s) {
+      var charts = s.querySelectorAll('.p-chart');
+      charts.forEach(function(c) {
+        if (c._echartsInstance) c._echartsInstance.resize();
+      });
+    });
+  }
+
   // ── 自动缩放 ──
   function applyAutoScale() {
-    if (!CONFIG.autoScale || !stageInner) return;
+    if (!CONFIG.autoScale || !stage || !stageInner) return;
 
     var nativeW = parseInt(stageInner.dataset.width || '960', 10);
     var nativeH = parseInt(stageInner.dataset.height || '540', 10);
@@ -150,6 +595,7 @@
     stageInner.style.width = nativeW + 'px';
     stageInner.style.height = nativeH + 'px';
     stageInner.style.transform = 'scale(' + scale.toFixed(4) + ')';
+    resizeCharts();
   }
 
   // ── 缩略图 ──
@@ -236,6 +682,9 @@
 
   // ── 事件绑定 ──
   function bindEvents() {
+    if (viewerEventsBound) return;
+    viewerEventsBound = true;
+
     // 按钮
     if (btnPrev) btnPrev.addEventListener('click', prev);
     if (btnNext) btnNext.addEventListener('click', next);
@@ -245,8 +694,10 @@
     document.addEventListener('keydown', onKeyDown);
 
     // 触摸
-    stage.addEventListener('touchstart', onTouchStart, { passive: true });
-    stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    if (stage) {
+      stage.addEventListener('touchstart', onTouchStart, { passive: true });
+      stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    }
 
     // 全屏变化
     document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -260,10 +711,7 @@
   }
 
   function onKeyDown(e) {
-    // 忽略输入框、文本区、按钮上的按键，避免覆盖控件原生行为
-    var tag = e.target.tagName;
-    var role = e.target.getAttribute('role');
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || role === 'button') return;
+    if (shouldIgnoreKey(e)) return;
 
     switch (e.key) {
       case 'ArrowRight':
@@ -299,6 +747,26 @@
         if (thumbnails) thumbnails.classList.remove('visible');
         break;
     }
+  }
+
+  function shouldIgnoreKey(e) {
+    var target = e.target;
+    if (!target || !target.tagName) return false;
+    var tag = target.tagName;
+    var role = target.getAttribute('role');
+
+    if (target.isContentEditable || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if ((tag === 'BUTTON' || role === 'button') && (e.key === ' ' || e.key === 'Enter')) return true;
+    if (tag !== 'INPUT') return false;
+
+    var type = (target.type || '').toLowerCase();
+    return type !== 'button' &&
+      type !== 'submit' &&
+      type !== 'reset' &&
+      type !== 'checkbox' &&
+      type !== 'radio' &&
+      type !== 'file' &&
+      type !== 'hidden';
   }
 
   function onTouchStart(e) {
@@ -341,6 +809,8 @@
   }
 
   // ── 启动 ──
+  bindUploadEvents();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

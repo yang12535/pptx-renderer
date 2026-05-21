@@ -1,5 +1,5 @@
 const { parseXml, child, toArray } = require('../core/xml');
-const { parseShape, parsePicture, parseGraphicFrame, parseCxnSp } = require('./shape');
+const { parseShape, parsePicture, parseGraphicFrame, parseCxnSp, parseChartXml } = require('./shape');
 const fs = require('fs');
 const path = require('path');
 
@@ -48,7 +48,44 @@ function parseSlide(slidePath, theme, relsMap) {
     }
   }
 
+  // 解析图表
+  for (const el of slideObj.elements) {
+    if (el.type === 'graphicFrame' && el.chartRelId && relsMap[el.chartRelId]) {
+      const chartPath = resolveRelPath(slidePath, relsMap[el.chartRelId]);
+      if (fs.existsSync(chartPath)) {
+        try {
+          const chartXml = fs.readFileSync(chartPath, 'utf-8');
+          el.chartData = parseChartXml(chartXml, theme);
+        } catch (e) {
+          el.chartData = null;
+        }
+      }
+    }
+  }
+
   return slideObj;
+}
+
+function resolveRelPath(sourcePath, target) {
+  if (!target) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target;
+  if (path.isAbsolute(target) && fs.existsSync(target)) return target;
+  const packageRoot = path.resolve(path.dirname(sourcePath), '..', '..');
+  let resolved;
+  if (target.startsWith('/')) {
+    resolved = path.join(packageRoot, target.slice(1));
+  } else if (path.isAbsolute(target)) {
+    return target;
+  } else {
+    resolved = path.resolve(path.dirname(sourcePath), target);
+  }
+  const realResolved = path.resolve(resolved);
+  const realPackageRoot = path.resolve(packageRoot);
+  if (!realResolved.startsWith(realPackageRoot + path.sep) && realResolved !== realPackageRoot) {
+    console.warn('Path traversal blocked:', target, '->', resolved);
+    return '';
+  }
+  return resolved;
 }
 
 function parseBackground(bgObj, theme) {

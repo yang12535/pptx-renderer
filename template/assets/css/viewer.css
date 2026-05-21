@@ -16,6 +16,99 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* 上传区域 */
+#upload-zone {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  flex-direction: column;
+  gap: 20px;
+}
+
+#upload-zone.hidden {
+  display: none;
+}
+
+.drop-area {
+  width: 480px;
+  max-width: 90vw;
+  height: 280px;
+  border: 2px dashed rgba(255,255,255,0.25);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: rgba(255,255,255,0.7);
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+}
+
+.drop-area:hover,
+.drop-area:focus-visible,
+.drop-area.dragover {
+  border-color: #4dabf7;
+  background: rgba(77,171,247,0.08);
+  outline: none;
+}
+
+.drop-area svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.6;
+}
+
+.drop-area h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.drop-area p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+#file-input {
+  display: none;
+}
+
+#upload-error {
+  color: #ff6b6b;
+  font-size: 14px;
+  min-height: 20px;
+}
+
+#upload-loading {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255,255,255,0.7);
+}
+
+#upload-loading.visible {
+  display: flex;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #4dabf7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Stage（幻灯片舞台）── */
 #stage {
   position: relative;
@@ -154,6 +247,11 @@ html, body {
   to   { opacity: 1; transform: scaleX(1); transform-origin: left center; }
 }
 
+@keyframes tableRowReveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* 幻灯片激活时，子元素触发动画 */
 .slide .p-el {
   opacity: 0;
@@ -174,6 +272,14 @@ html, body {
 .anim-zoomIn    { animation-name: zoomIn; }
 .anim-growIn    { animation-name: growIn; transform-origin: bottom center; }
 .anim-expandRight { animation-name: expandRight; transform-origin: left center; }
+
+.slide .p-table tr {
+  opacity: 0;
+}
+
+.slide.active .p-table tr {
+  animation: tableRowReveal 0.42s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
 
 /* ── 控制栏 ── */
 #controls {
@@ -331,22 +437,5 @@ html, body {
   .thumb {
     width: 90px;
     height: 51px;
-  }
-}
-
-/* ── 减少动画偏好 ── */
-@media (prefers-reduced-motion: reduce) {
-  .slide,
-  .slide .p-el,
-  #stage-inner,
-  #controls,
-  #thumbnails,
-  #toast {
-    transition: none !important;
-    animation: none !important;
-  }
-  /* 动画被禁用后，强制显示当前幻灯片内的所有元素 */
-  .slide.active .p-el {
-    opacity: 1 !important;
   }
 }

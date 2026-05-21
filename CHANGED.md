@@ -1,0 +1,92 @@
+# CHANGED
+
+## 2026-05-21
+
+### Fixed
+
+- 静态构建已解析出的绝对 chart 文件路径不再被再次按 package path 拼接，避免图表 XML 在 `parseSlide()` 中找不到。
+- 上传页在浏览器解析器缺失或同步抛错时也会关闭 loading 并显示错误提示。
+- 上传错误区增加 alert 语义，并改用查看器 feature-detect 显示 JSZip / ECharts 依赖缺失提示，移除脚本标签内联错误处理。
+- TODO 中的 PPTX XML 动画节点名改为 Markdown 代码样式，避免被渲染器按 HTML 标签吞掉。
+- 上传区样式移入 viewer CSS，解析 loading 增加 status live region，run 字体名在静态和浏览器渲染前过滤危险 CSS 字符。
+- 输出目录清理拒绝根目录、工作目录、仓库目录及其祖先；浏览器段落解析保留 run / field / break 子节点顺序，tooltip 改为 richText，ZIP 日志只输出文件数量。
+
+### Verified
+
+- PR 验证命令同步为 `npm run build:static -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist`。
+
+## 2026-05-20
+
+### Added
+
+- 新增 `README.md`，补充项目定位、快速开始、目录结构、当前验证样例和已知限制。
+- 新增本变更日志，用于记录渲染能力、测试覆盖和后续风险。
+- 为 ECharts 图表增加入场动画：
+  - 柱状图从零值弹出。
+  - 折线图先显示坐标轴，再按分类点逐步展开，避免瞬间铺满。
+- 为表格行增加逐行显现动画。
+
+### Changed
+
+- 构建流程改为使用系统临时目录解压 PPTX，避免在 `dist/` 内留下 `.temp` 工作目录。
+- 构建入口导出 `buildUpload` / `buildStatic` 函数，便于后续自动化或测试复用。
+- relationship target 解析改为基于源 slide 路径和 package root 解析，减少图片、图表等相对路径错位。
+- 表格解析升级为结构化数据：
+  - 解析列宽和行高。
+  - 解析单元格填充、边框和内边距。
+  - 保留单元格内富文本结构。
+- 表格渲染升级：
+  - 按容器高度压缩行高，避免表格撑出幻灯片。
+  - 单元格使用 `overflow: hidden` 控制溢出。
+  - 表头、边框和背景更接近 PPTX 原始效果。
+- 图表渲染升级：
+  - 解析 chart XML 的 categories、series、values、series color 和 `showVal`。
+  - 支持多层分类缓存和数字缓存。
+  - 坐标轴使用数据范围生成更稳的刻度。
+  - 数值标签使用统一格式化。
+- 浏览器端 `pptx-parser.js` 同步服务端解析能力，上传预览与 CLI 构建保持一致。
+
+### Fixed
+
+- 修复年份等纯数字文本被 XML parser 解析为 number 后丢失的问题。
+- 修复 `<a:fld>` 字段文本未作为段落 run 解析的问题。
+- 修复折线图动画看起来瞬间完成的问题，现在按时间片逐点追加数据。
+- 修复 `800ms` 被误当成 `800s` 级别延迟的动画等待问题。
+- 修复部分图表、表格 placeholder 残留问题。
+- 删除误提交的 `pptx-parser.js.bak`，并在 `.gitignore` 中忽略 `*.bak`。
+- 构建临时目录清理改为 `try/finally`，构建失败时也会删除临时解压目录。
+- 模板状态切换改为显式 token 替换，缺失 token 时直接失败而不是静默生成错误页面。
+- 上传区域补充键盘可访问性和 100MB 文件大小限制。
+- 移除 TODO 中的个人绝对路径，并统一主线分支名称为仓库实际的 `master`。
+- 修复含负值的横向柱状图被 `min: 0` 数值轴裁掉的问题，正负发散图现在按真实数据范围显示。
+- 移除 `prefers-reduced-motion` 对查看器动画的禁用规则，保证系统关闭动画时 PPTX 入场、表格和图表动画仍会播放。
+- 修复同一 plot area 内多个同类型 chart group 时只读取第一个或读不到 series 的问题，现在会合并同类型 group 的 series。
+- 修复 chart cache 中稀疏 `<c:pt idx="...">` 被压缩导致分类或数值错位的问题，按原始 idx 补 `null` 保留空洞。
+- 修复表格单元格边框解析字段名不匹配的问题，解析器输出 `style.borders` 供渲染器逐边应用。
+- 移除未被 Node 代码使用的 `jszip` npm 依赖，浏览器上传模式继续使用 vendored `template/assets/vendor/jszip.min.js`。
+- 上传模式构建会拒绝覆盖已有文件路径，避免误把文件输出路径删除并替换成目录。
+- 浏览器端 PPTX 解析改为完整 Promise 链，内部读取失败会正确 reject 并回到上传错误提示。
+- 浏览器端 slide、media、chart 关系路径改为 package-relative 解析，并修复多个媒体关系异步转换时的闭包错位。
+- 文本 inset 渲染改为保留显式 `0`，避免表格单元格零边距被默认 padding 覆盖。
+- 图表缩放和数值格式化跳过 `null` / `undefined`，避免稀疏点被误当成 0。
+
+### Verified
+
+- `npm run build:static -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist`
+- `node --check build.js`
+- `node --check src/parser/shape.js`
+- `node --check src/parser/slide.js`
+- `node --check src/render/html-render.js`
+- `node --check template/assets/js/pptx-parser.js`
+- `node --check template/assets/js/viewer.js`
+- `node --check dist/assets/js/viewer.js`
+- `npm run build -- dist`
+- Node 构造 XML 验证 `parseChartXml()`：
+  - 同一 plot area 内多个 `lineChart` group 会合并 series。
+  - 稀疏 `idx` chart cache 会保留 `null` 空洞。
+- Playwright/Chrome 上传模式验证：在 `reduced-motion: reduce` 环境下上传测试 PPTX，生成 10 页并进入 viewer，active 元素动画名仍为 `fadeIn` / `slideIn...` 而非 `none`。
+- Playwright/Chrome 折线图验证：在 `reduced-motion: reduce` 环境下第 3 页折线图从 0 个点逐步展开到 14 个点，不会瞬间铺满。
+- `rg -n "p-placeholder|\[chart\]|\[graphic\]" dist/index.html` 无匹配
+- Chrome 验证 `http://127.0.0.1:8765/`：
+  - 第 3 页折线图中途只显示部分年份，随后完整展开。
+  - Chrome 控制台无 error。

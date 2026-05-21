@@ -97,11 +97,75 @@ function renderElement(el, index) {
   }
 
   if (el.type === 'graphicFrame') {
+    if (el.chartData) {
+      const chartJson = JSON.stringify(el.chartData).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const chartStyle = style + `animation-delay:${animDelay}ms;`;
+      return `<div class="p-el p-chart ${animClass}" data-chart="${chartJson}" style="${chartStyle}"></div>`;
+    }
+    if (el.tableData) {
+      const tblHtml = renderTable(el.tableData, xf.height);
+      const tblStyle = style + `animation-delay:${animDelay}ms;overflow:hidden;`;
+      return `<div class="p-el p-table-wrap ${animClass}" style="${tblStyle}">${tblHtml}</div>`;
+    }
     const fullStyle = style + `background:#f0f0f0;border:1px dashed #ccc;animation-delay:${animDelay}ms;`;
     return `<div class="p-el p-placeholder ${animClass}" style="${fullStyle}">[${el.subType || 'graphic'}]</div>`;
   }
 
   return '';
+}
+
+function renderTable(tableData, availableHeight) {
+  let tblHtml = '<table class="p-table" style="width:100%;height:100%;border-collapse:collapse;border-spacing:0;table-layout:fixed;">';
+  const totalRowHeight = tableData.rows.reduce((sum, row) => sum + (row.height || 0), 0);
+  const rowScale = availableHeight && totalRowHeight > availableHeight ? availableHeight / totalRowHeight : 1;
+
+  if (tableData.colWidths && tableData.colWidths.length > 0) {
+    const total = tableData.colWidths.reduce((sum, width) => sum + (width || 0), 0);
+    if (total > 0) {
+      tblHtml += '<colgroup>';
+      for (const width of tableData.colWidths) {
+        tblHtml += `<col style="width:${(width || 0) / total * 100}%;">`;
+      }
+      tblHtml += '</colgroup>';
+    }
+  }
+
+  for (let ri = 0; ri < tableData.rows.length; ri++) {
+    const row = tableData.rows[ri];
+    const rowHeight = row.height ? row.height * rowScale : null;
+    const delay = (0.82 + ri * 0.06).toFixed(2);
+    const rowStyle = (rowHeight ? `height:${rowHeight}px;` : '') + `animation-delay:${delay}s;`;
+    tblHtml += `<tr style="${rowStyle}">`;
+    for (let ci = 0; ci < row.cells.length; ci++) {
+      const tag = ri === 0 ? 'th' : 'td';
+      const cell = row.cells[ci];
+      const content = cell.textBody ? renderText(cell.textBody) : escapeHtml(cell.text || '');
+      tblHtml += `<${tag} class="p-table-cell" style="${buildTableCellStyle(cell, rowHeight)}">${content}</${tag}>`;
+    }
+    tblHtml += '</tr>';
+  }
+
+  tblHtml += '</table>';
+  return tblHtml;
+}
+
+function buildTableCellStyle(cell, rowHeight) {
+  const cellStyle = cell.style || {};
+  let s = '';
+  const borders = cellStyle.borders;
+  if (borders) {
+    for (const side in borders) {
+      const b = borders[side];
+      s += `border-${side}:${b.width || 1}px solid ${b.color || '#d9d9d9'};`;
+    }
+  } else {
+    const border = cellStyle.border || { width: 1, color: '#d9d9d9' };
+    s += `border:${border.width || 1}px solid ${border.color || '#d9d9d9'};`;
+  }
+  s += `background:${cellStyle.fill || '#fff'};`;
+  s += 'padding:0;vertical-align:middle;overflow:hidden;font-weight:normal;text-align:left;';
+  if (rowHeight) s += `height:${rowHeight}px;`;
+  return s;
 }
 
 function renderLine(el, animClass, animDelay) {
@@ -130,10 +194,11 @@ function renderText(txBody) {
   else if (anchor === 'ctr') align = 'center';
   else if (anchor === 'r') align = 'right';
   else if (anchor === 'just') align = 'justify';
+  align = normalizeTextAlign(align);
 
   let pad = '';
-  if (lIns || tIns || rIns || bIns) {
-    pad = `padding:${tIns || 0}px ${rIns || 7}px ${bIns || 0}px ${lIns || 7}px;`;
+  if (hasInset(lIns) || hasInset(tIns) || hasInset(rIns) || hasInset(bIns)) {
+    pad = `padding:${textInset(tIns, 0)}px ${textInset(rIns, 7)}px ${textInset(bIns, 0)}px ${textInset(lIns, 7)}px;`;
   }
 
   const valign = anchor === 'b' ? 'flex-end' : anchor === 'ctr' ? 'center' : 'flex-start';
@@ -141,7 +206,7 @@ function renderText(txBody) {
   let html = `<div class="p-txBody" style="width:100%;height:100%;display:flex;flex-direction:column;justify-content:${valign};text-align:${align};${pad}box-sizing:border-box;">`;
 
   for (const para of paragraphs) {
-    const pAlign = para.align || align;
+    const pAlign = normalizeTextAlign(para.align || align);
     let pStyle = `text-align:${pAlign};margin:0;`;
     if (para.spaceBefore) pStyle += `margin-top:${para.spaceBefore}px;`;
     if (para.spaceAfter) pStyle += `margin-bottom:${para.spaceAfter}px;`;
@@ -165,8 +230,7 @@ function renderText(txBody) {
       if (run.underline) rStyle += 'text-decoration:underline;';
       if (run.size) rStyle += `font-size:${run.size}pt;`;
       if (run.color && run.color !== 'inherit') rStyle += `color:${run.color};`;
-      if (run.font) rStyle += `font-family:'${run.font}',sans-serif;`;
-      else if (run.fontEa) rStyle += `font-family:'${run.fontEa}',sans-serif;`;
+      rStyle += buildFontFamilyStyle(run.font || run.fontEa);
 
       const text = escapeHtml(run.text || '');
       if (rStyle) html += `<span style="${rStyle}">${text}</span>`;
@@ -178,6 +242,34 @@ function renderText(txBody) {
 
   html += '</div>';
   return html;
+}
+
+function hasInset(value) {
+  return value !== undefined && value !== null;
+}
+
+function textInset(value, fallback) {
+  return hasInset(value) ? value : fallback;
+}
+
+function buildFontFamilyStyle(font) {
+  if (!font) return '';
+  const safeFont = sanitizeFontName(font);
+  return safeFont ? `font-family:'${safeFont}',sans-serif;` : 'font-family:sans-serif;';
+}
+
+function sanitizeFontName(font) {
+  const name = String(font).trim();
+  if (!name || /[\u0000-\u001f\u007f&"'\\;{}<>]/.test(name)) return '';
+  return name;
+}
+
+function normalizeTextAlign(value) {
+  if (value === 'ctr') return 'center';
+  if (value === 'r') return 'right';
+  if (value === 'just') return 'justify';
+  if (value === 'l') return 'left';
+  return value || 'left';
 }
 
 function buildBaseStyle(xf) {
