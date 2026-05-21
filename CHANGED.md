@@ -1,5 +1,16 @@
 # CHANGED
 
+## 2026-05-21
+
+### Fixed
+
+- 静态构建已解析出的绝对 chart 文件路径不再被再次按 package path 拼接，避免图表 XML 在 `parseSlide()` 中找不到。
+- 上传页在浏览器解析器缺失或同步抛错时也会关闭 loading 并显示错误提示。
+
+### Verified
+
+- PR 验证命令同步为 `npm run build:static -- "ls/就业压力、高质量就业与下沉原因分析(1).pptx" dist`。
+
 ## 2026-05-20
 
 ### Added

@@ -124,11 +124,16 @@
       return;
     }
     showUploadError('');
-    uploadLoading.classList.add('visible');
+    setUploadLoading(true);
 
-    loadPptxFromFile(file).then(function (result) {
+    Promise.resolve().then(function () {
+      if (typeof loadPptxFromFile !== 'function') {
+        throw new Error('PPTX 解析器未加载');
+      }
+      return loadPptxFromFile(file);
+    }).then(function (result) {
       console.log('[Upload] parsed ok, slides:', result.slideCount, 'size:', result.slideW + 'x' + result.slideH);
-      uploadLoading.classList.remove('visible');
+      setUploadLoading(false);
 
       // 注入幻灯片
       stageInner.innerHTML = result.slidesHtml;
@@ -143,10 +148,14 @@
       if (fileInput) fileInput.blur();
       reinit();
     }).catch(function (err) {
-      uploadLoading.classList.remove('visible');
+      setUploadLoading(false);
       showUploadError('解析失败: ' + (err.message || '未知错误'));
       console.error('[Upload] parse error:', err);
     });
+  }
+
+  function setUploadLoading(visible) {
+    if (uploadLoading) uploadLoading.classList.toggle('visible', visible);
   }
 
   function showUploadError(msg) {
