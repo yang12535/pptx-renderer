@@ -230,8 +230,7 @@ function renderText(txBody) {
       if (run.underline) rStyle += 'text-decoration:underline;';
       if (run.size) rStyle += `font-size:${run.size}pt;`;
       if (run.color && run.color !== 'inherit') rStyle += `color:${run.color};`;
-      if (run.font) rStyle += `font-family:'${run.font}',sans-serif;`;
-      else if (run.fontEa) rStyle += `font-family:'${run.fontEa}',sans-serif;`;
+      rStyle += buildFontFamilyStyle(run.font || run.fontEa);
 
       const text = escapeHtml(run.text || '');
       if (rStyle) html += `<span style="${rStyle}">${text}</span>`;
@@ -251,6 +250,18 @@ function hasInset(value) {
 
 function textInset(value, fallback) {
   return hasInset(value) ? value : fallback;
+}
+
+function buildFontFamilyStyle(font) {
+  if (!font) return '';
+  const safeFont = sanitizeFontName(font);
+  return safeFont ? `font-family:'${safeFont}',sans-serif;` : 'font-family:sans-serif;';
+}
+
+function sanitizeFontName(font) {
+  const name = String(font).trim();
+  if (!name || /[\u0000-\u001f\u007f&"'\\;{}<>]/.test(name)) return '';
+  return name;
 }
 
 function normalizeTextAlign(value) {

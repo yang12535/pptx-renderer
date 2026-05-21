@@ -61,6 +61,7 @@
 - [x] 2026-05-20: 修复 PR review 指出的多 chart group、稀疏 chart cache、表格边框字段和未使用 jszip 依赖问题
 - [x] 2026-05-20: 修复 PR review 指出的输出路径误删、浏览器 Promise 链、package-relative 关系路径、多媒体异步闭包、显式零 inset 和 null 图表值问题
 - [x] 2026-05-21: 修复 PR review 指出的静态 chart 绝对路径重解析和上传解析器缺失时 loading 卡住问题
+- [x] 2026-05-21: 修复 PR review 指出的上传样式内联、loading live region 和 run 字体样式注入风险
 
 ---
 

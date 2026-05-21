@@ -8,6 +8,7 @@
 - 上传页在浏览器解析器缺失或同步抛错时也会关闭 loading 并显示错误提示。
 - 上传错误区增加 alert 语义，并改用查看器 feature-detect 显示 JSZip / ECharts 依赖缺失提示，移除脚本标签内联错误处理。
 - TODO 中的 PPTX XML 动画节点名改为 Markdown 代码样式，避免被渲染器按 HTML 标签吞掉。
+- 上传区样式移入 viewer CSS，解析 loading 增加 status live region，run 字体名在静态和浏览器渲染前过滤危险 CSS 字符。
 
 ### Verified
 

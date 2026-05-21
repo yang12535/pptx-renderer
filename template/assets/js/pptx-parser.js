@@ -992,8 +992,7 @@
         if (run.underline) rStyle += 'text-decoration:underline;';
         if (run.size) rStyle += 'font-size:' + run.size + 'pt;';
         if (run.color && run.color !== 'inherit') rStyle += 'color:' + run.color + ';';
-        if (run.font) rStyle += "font-family:'" + run.font + "',sans-serif;";
-        else if (run.fontEa) rStyle += "font-family:'" + run.fontEa + "',sans-serif;";
+        rStyle += buildFontFamilyStyle(run.font || run.fontEa);
         var text = escapeHtml(run.text || '');
         if (rStyle) html += '<span style="' + rStyle + '">' + text + '</span>';
         else html += text;
@@ -1018,6 +1017,18 @@
 
   function textInset(value, fallback) {
     return hasInset(value) ? value : fallback;
+  }
+
+  function buildFontFamilyStyle(font) {
+    if (!font) return '';
+    var safeFont = sanitizeFontName(font);
+    return safeFont ? "font-family:'" + safeFont + "',sans-serif;" : 'font-family:sans-serif;';
+  }
+
+  function sanitizeFontName(font) {
+    var name = String(font).trim();
+    if (!name || /[\u0000-\u001f\u007f&"'\\;{}<>]/.test(name)) return '';
+    return name;
   }
 
   function buildBaseStyle(xf) {
