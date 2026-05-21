@@ -6,6 +6,8 @@
 
 - 静态构建已解析出的绝对 chart 文件路径不再被再次按 package path 拼接，避免图表 XML 在 `parseSlide()` 中找不到。
 - 上传页在浏览器解析器缺失或同步抛错时也会关闭 loading 并显示错误提示。
+- 上传错误区增加 alert 语义，并改用查看器 feature-detect 显示 JSZip / ECharts 依赖缺失提示，移除脚本标签内联错误处理。
+- TODO 中的 PPTX XML 动画节点名改为 Markdown 代码样式，避免被渲染器按 HTML 标签吞掉。
 
 ### Verified
 

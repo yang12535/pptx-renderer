@@ -25,6 +25,7 @@
   var controlsTimer = null;
   var thumbnailsBuilt = false;
   var viewerEventsBound = false;
+  var chartDependencyWarned = false;
   var MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
 
   // ── DOM 引用 ──
@@ -48,6 +49,7 @@
 
   // ── 初始化 ──
   function init() {
+    showInitialDependencyStatus();
     bindEvents();
     refreshSlides();
     if (total === 0) {
@@ -123,6 +125,11 @@
       showUploadError('文件过大，请上传小于 100MB 的 PPTX 文件');
       return;
     }
+    var uploadDependencyError = getUploadDependencyError();
+    if (uploadDependencyError) {
+      showUploadError(uploadDependencyError);
+      return;
+    }
     showUploadError('');
     setUploadLoading(true);
 
@@ -160,6 +167,34 @@
 
   function showUploadError(msg) {
     if (uploadError) uploadError.textContent = msg;
+  }
+
+  function showInitialDependencyStatus() {
+    var uploadDependencyError = getUploadDependencyError();
+    if (uploadDependencyError) {
+      showUploadError(uploadDependencyError);
+      return;
+    }
+    if (typeof echarts === 'undefined') {
+      showChartDependencyWarning();
+    }
+  }
+
+  function getUploadDependencyError() {
+    if (!uploadZone || uploadZone.classList.contains('hidden')) return '';
+    if (typeof JSZip === 'undefined') return 'PPTX 解压组件未加载，请刷新页面后重试';
+    return '';
+  }
+
+  function showChartDependencyWarning() {
+    if (chartDependencyWarned) return;
+    chartDependencyWarned = true;
+    var message = '图表组件未加载，图表将无法显示';
+    if (uploadZone && !uploadZone.classList.contains('hidden')) {
+      showUploadError(message);
+    } else {
+      showToast(message);
+    }
   }
 
   // ── 幻灯片切换 ──
@@ -249,7 +284,10 @@
 
   // ── ECharts 图表 ──
   function initCharts(slideEl) {
-    if (typeof echarts === 'undefined') return;
+    if (typeof echarts === 'undefined') {
+      showChartDependencyWarning();
+      return;
+    }
     var charts = slideEl.querySelectorAll('.p-chart');
     charts.forEach(function(container) {
       var dataStr = container.getAttribute('data-chart');

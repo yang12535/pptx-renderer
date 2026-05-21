@@ -102,7 +102,7 @@
 - [ ] 更完整的单元格垂直对齐和文本换行策略
 
 ### PPTX 原生动画提取
-- [ ] 解析 slide.xml 中的 <p:timing> / <p:animEffect> 节点
+- [ ] 解析 slide.xml 中的 `<p:timing>` / `<p:animEffect>` 节点
 - [ ] 建立 filter → CSS animation-name 映射表
 
 ### 体验优化

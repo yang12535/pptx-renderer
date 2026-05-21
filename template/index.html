@@ -89,7 +89,7 @@
   </div>
   <input type="file" id="file-input" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation">
   <div id="upload-loading"><div class="spinner"></div>正在解析...</div>
-  <div id="upload-error"></div>
+  <div id="upload-error" role="alert"></div>
 </div>
 
 <!-- 幻灯片舞台 -->
@@ -111,8 +111,8 @@
 <div id="thumbnails" role="navigation" aria-label="幻灯片缩略图"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="./assets/vendor/jszip.min.js" defer onerror="console.error('JSZip 加载失败')"></script>
-<script src="./assets/vendor/echarts.min.js" defer onerror="console.error('ECharts 加载失败')"></script>
+<script src="./assets/vendor/jszip.min.js" defer></script>
+<script src="./assets/vendor/echarts.min.js" defer></script>
 <script src="./assets/js/pptx-parser.js" defer></script>
 <script src="./assets/js/viewer.js" defer></script>
 </body>
