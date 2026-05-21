@@ -55,10 +55,12 @@
     }
 
     // 处理元素子节点
+    obj._children = [];
     for (var k = 0; k < elementChildren.length; k++) {
       var c = elementChildren[k];
       var key = c.tag;
       var val = domToJson(c.dom);
+      obj._children.push({ tag: key, value: val });
       if (obj[key] !== undefined) {
         if (!Array.isArray(obj[key])) obj[key] = [obj[key]];
         obj[key].push(val);
@@ -403,19 +405,45 @@
       if (buChar) para.bullet = { type: 'char', char: buChar._char };
       else if (buAutoNum) para.bullet = { type: 'auto', style: buAutoNum._type };
     }
-    var runs = [];
-    for (var key in p) {
-      if (key.startsWith('_') || key === '#text') continue;
-      if (key.endsWith(':r') || key === 'r' || key.endsWith(':fld') || key === 'fld') {
-        var arr = toArray(p[key]);
-        for (var i = 0; i < arr.length; i++) runs.push(parseRun(arr[i], theme));
-      } else if (key.endsWith(':br') || key === 'br') {
-        var arr2 = toArray(p[key]);
-        for (var j = 0; j < arr2.length; j++) runs.push({ type: 'br' });
-      }
-    }
+    var runs = parseParagraphRuns(p, theme);
     para.lines = runs;
     return para;
+  }
+
+  function parseParagraphRuns(p, theme) {
+    var runs = [];
+    var orderedChildren = p._children || [];
+    if (orderedChildren.length) {
+      for (var i = 0; i < orderedChildren.length; i++) {
+        var childInfo = orderedChildren[i];
+        if (isRunTag(childInfo.tag)) {
+          runs.push(parseRun(childInfo.value, theme));
+        } else if (isBreakTag(childInfo.tag)) {
+          runs.push({ type: 'br' });
+        }
+      }
+      return runs;
+    }
+
+    for (var key in p) {
+      if (key.startsWith('_') || key === '#text') continue;
+      if (isRunTag(key)) {
+        var arr = toArray(p[key]);
+        for (var j = 0; j < arr.length; j++) runs.push(parseRun(arr[j], theme));
+      } else if (isBreakTag(key)) {
+        var arr2 = toArray(p[key]);
+        for (var k = 0; k < arr2.length; k++) runs.push({ type: 'br' });
+      }
+    }
+    return runs;
+  }
+
+  function isRunTag(tag) {
+    return tag.endsWith(':r') || tag === 'r' || tag.endsWith(':fld') || tag === 'fld';
+  }
+
+  function isBreakTag(tag) {
+    return tag.endsWith(':br') || tag === 'br';
   }
 
   function parseRun(r, theme) {
@@ -1088,7 +1116,7 @@
   global.loadPptxFromFile = function (file) {
     console.log("[Parser] loadPptxFromFile start");
     return JSZip.loadAsync(file).then(function (zip) {
-      console.log("[Parser] zip loaded, files:", Object.keys(zip.files).join(", "));
+      console.log("[Parser] zip loaded, file count:", Object.keys(zip.files).length);
       return readZipText(zip, 'ppt/presentation.xml').then(function (presXml) {
         var pres = parsePresentation(presXml);
         console.log("[Parser] presentation parsed, slides:", pres.slides.length, "size:", pres.widthEmu, "x", pres.heightEmu);

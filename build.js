@@ -151,6 +151,7 @@ function parseRels(relsPath) {
 
 function prepareOutputDirectory(outDir) {
   const resolved = path.resolve(outDir);
+  assertSafeOutputDirectory(resolved);
   if (fs.existsSync(resolved)) {
     const stat = fs.lstatSync(resolved);
     if (!stat.isDirectory()) {
@@ -160,6 +161,38 @@ function prepareOutputDirectory(outDir) {
   }
   fs.mkdirSync(resolved, { recursive: true });
   return resolved;
+}
+
+function assertSafeOutputDirectory(outputPath) {
+  const resolved = path.resolve(outputPath);
+  const root = path.parse(resolved).root;
+  if (samePath(resolved, root)) {
+    throw new Error('Refusing to use a filesystem root as output directory: ' + resolved);
+  }
+
+  const protectedPaths = [
+    path.resolve(__dirname),
+    path.resolve(process.cwd()),
+    path.resolve(os.homedir()),
+  ];
+  for (const protectedPath of protectedPaths) {
+    if (isSameOrAncestorPath(resolved, protectedPath)) {
+      throw new Error('Refusing to clean protected output directory: ' + resolved);
+    }
+  }
+}
+
+function isSameOrAncestorPath(candidate, target) {
+  const relative = path.relative(candidate, target);
+  return relative === '' ||
+    (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
+}
+
+function samePath(left, right) {
+  if (process.platform === 'win32') {
+    return left.toLowerCase() === right.toLowerCase();
+  }
+  return left === right;
 }
 
 function copyAssets(srcDir, dstDir) {

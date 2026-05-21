@@ -393,7 +393,7 @@
       animationDelayUpdate: function (idx) { return Math.min(idx * 100, 900); },
       color: colors.length ? colors : undefined,
       title: data.title ? { text: data.title, left: 'center', textStyle: { fontSize: 14, color: '#212529', fontWeight: 700 } } : undefined,
-      tooltip: { trigger: data.chartType === 'pieChart' ? 'item' : 'axis' },
+      tooltip: { trigger: data.chartType === 'pieChart' ? 'item' : 'axis', renderMode: 'richText' },
       legend: data.series.length > 1 ? { bottom: 0, textStyle: { fontSize: 11, color: '#495057' } } : undefined,
       grid: { left: '8%', right: '10%', bottom: '10%', top: data.title ? '18%' : '10%', containLabel: true },
     };
