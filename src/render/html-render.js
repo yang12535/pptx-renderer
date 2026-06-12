@@ -402,13 +402,8 @@ function escapeHtml(text) {
 
 function isSafeUrl(url) {
   if (!url) return false;
-  // 剔除 ASCII 控制字符和空白符，防止 java\nscript: 等绕过 scheme 检测
   const normalized = String(url).replace(/[\x00-\x20\x7F]/g, '');
   if (!normalized) return false;
-  // 相对路径、锚点、协议相对 URL（无 scheme 可检测）
-  if (/^(\.\.?\/|\/\/|#)/.test(normalized) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) {
-    return true;
-  }
   const scheme = normalized.split(':')[0].toLowerCase();
   return ['http', 'https', 'mailto', 'tel'].includes(scheme);
 }

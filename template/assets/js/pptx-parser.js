@@ -1016,9 +1016,6 @@
     if (!url) return false;
     var normalized = String(url).replace(/[\x00-\x20\x7F]/g, '');
     if (!normalized) return false;
-    if (/^(\.\.?\/|\/\/|#)/.test(normalized) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) {
-      return true;
-    }
     var scheme = normalized.split(':')[0].toLowerCase();
     return ['http', 'https', 'mailto', 'tel'].indexOf(scheme) !== -1;
   }
