@@ -279,7 +279,7 @@
           var run = lines[l];
           if (run.hlinkRId && relsMap[run.hlinkRId]) {
             var target = relsMap[run.hlinkRId];
-            if (typeof target === 'string' && isExternalTarget(target)) {
+            if (typeof target === 'string' && isLinkTarget(target)) {
               run.href = target;
             }
             delete run.hlinkRId;
@@ -289,8 +289,8 @@
     }
   }
 
-  function isExternalTarget(target) {
-    return /^(https?|mailto|tel|ftp):/i.test(target);
+  function isLinkTarget(target) {
+    return /^(https?|mailto|tel):/i.test(target);
   }
 
   function parseBackground(bgObj, theme) {
