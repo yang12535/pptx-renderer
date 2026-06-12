@@ -1073,7 +1073,8 @@
         rStyle += buildFontFamilyStyle(run.font || run.fontEa);
         var text = escapeHtml(run.text || '');
         if (run.href && isSafeUrl(run.href)) {
-          html += '<a href="' + escapeHtml(String(run.href)) + '" target="_blank" rel="noopener noreferrer"';
+          var href = String(run.href).replace(/[\x00-\x20\x7F]/g, '');
+          html += '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer"';
           if (rStyle) html += ' style="' + rStyle + '"';
           html += '>' + text + '</a>';
         } else if (rStyle) {
