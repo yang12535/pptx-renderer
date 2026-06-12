@@ -403,15 +403,12 @@ function escapeHtml(text) {
 function isSafeUrl(url) {
   if (!url) return false;
   const trimmed = String(url).trim();
-  // 相对 URL、锚点、协议相对 URL 均安全
-  if (/^(\.?\/|#|[a-zA-Z][a-zA-Z0-9+.-]*:)/.test(trimmed)) {
-    const scheme = trimmed.split(':')[0].toLowerCase();
-    // 阻止危险 scheme
-    if (['javascript', 'data', 'vbscript', 'file'].includes(scheme)) return false;
+  // 相对路径、锚点、协议相对 URL（无 scheme 可检测）
+  if (/^(\.\.?\/|\/\/|#)/.test(trimmed) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
     return true;
   }
-  // 无 scheme 的相对路径安全
-  return true;
+  const scheme = trimmed.split(':')[0].toLowerCase();
+  return ['http', 'https', 'mailto', 'tel'].includes(scheme);
 }
 
 module.exports = { renderSlides };

@@ -1008,12 +1008,11 @@
   function isSafeUrl(url) {
     if (!url) return false;
     var trimmed = String(url).trim();
-    if (/^(\.?\/|#|[a-zA-Z][a-zA-Z0-9+.-]*:)/.test(trimmed)) {
-      var scheme = trimmed.split(':')[0].toLowerCase();
-      if (['javascript', 'data', 'vbscript', 'file'].indexOf(scheme) !== -1) return false;
+    if (/^(\.\.?\/|\/\/|#)/.test(trimmed) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
       return true;
     }
-    return true;
+    var scheme = trimmed.split(':')[0].toLowerCase();
+    return ['http', 'https', 'mailto', 'tel'].indexOf(scheme) !== -1;
   }
 
   function renderLine(el, animClass, animDelay) {
