@@ -290,7 +290,9 @@
   }
 
   function isLinkTarget(target) {
-    return /^(https?|mailto|tel):/i.test(target);
+    if (typeof target !== 'string') return false;
+    var cleaned = target.replace(/[\x00-\x20\x7F]/g, '');
+    return /^(https?|mailto|tel):/i.test(cleaned);
   }
 
   function parseBackground(bgObj, theme) {

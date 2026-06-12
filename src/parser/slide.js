@@ -131,7 +131,9 @@ function parseGroup(grpObj, theme, relsMap) {
 }
 
 function isExternalTarget(target) {
-  return /^(https?|mailto|tel):/i.test(target);
+  if (typeof target !== 'string') return false;
+  const cleaned = target.replace(/[\x00-\x20\x7F]/g, '');
+  return /^(https?|mailto|tel):/i.test(cleaned);
 }
 
 function resolveHyperlinks(el, relsMap) {
