@@ -1007,11 +1007,12 @@
 
   function isSafeUrl(url) {
     if (!url) return false;
-    var trimmed = String(url).trim();
-    if (/^(\.\.?\/|\/\/|#)/.test(trimmed) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    var normalized = String(url).replace(/[\x00-\x20\x7F]/g, '');
+    if (!normalized) return false;
+    if (/^(\.\.?\/|\/\/|#)/.test(normalized) || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) {
       return true;
     }
-    var scheme = trimmed.split(':')[0].toLowerCase();
+    var scheme = normalized.split(':')[0].toLowerCase();
     return ['http', 'https', 'mailto', 'tel'].indexOf(scheme) !== -1;
   }
 
