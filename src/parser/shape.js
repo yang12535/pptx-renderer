@@ -225,6 +225,11 @@ function parseRun(r, theme) {
     const ea = child(rPr, 'ea') || rPr['a:ea'];
     if (latin) run.font = latin._typeface;
     if (ea) run.fontEa = ea._typeface;
+
+    const hlinkClick = child(rPr, 'hlinkClick') || rPr['a:hlinkClick'];
+    if (hlinkClick) {
+      run.hlinkRId = hlinkClick['_r:id'] || hlinkClick._id;
+    }
   }
 
   return run;

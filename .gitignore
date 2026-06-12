@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-upload/
 dist-rich/
 test_temp/
 test_rich_temp/

@@ -61,6 +61,8 @@ function parseSlide(slidePath, theme, relsMap) {
         }
       }
     }
+    // 解析超链接：hlinkRId → href（通过 slide rels）
+    resolveHyperlinks(el, relsMap);
   }
 
   return slideObj;
@@ -126,6 +128,38 @@ function parseGroup(grpObj, theme, relsMap) {
     }
   }
   return elements;
+}
+
+function isExternalTarget(target) {
+  if (typeof target !== 'string') return false;
+  const cleaned = target.replace(/[\x00-\x20\x7F]/g, '');
+  return /^(https?|mailto|tel):/i.test(cleaned);
+}
+
+function resolveHyperlinks(el, relsMap) {
+  const texts = [];
+  if (el.text) texts.push(el.text);
+  if (el.tableData) {
+    for (const row of el.tableData.rows) {
+      for (const cell of row.cells) {
+        if (cell.textBody) texts.push(cell.textBody);
+      }
+    }
+  }
+  for (const txBody of texts) {
+    for (const para of txBody.paragraphs || []) {
+      for (const run of para.lines || []) {
+        if (run.hlinkRId && relsMap[run.hlinkRId]) {
+          const target = relsMap[run.hlinkRId];
+          // 只保留外部 URL，跳过内部 part 路径和本地文件系统路径
+          if (typeof target === 'string' && isExternalTarget(target)) {
+            run.href = target;
+          }
+          delete run.hlinkRId;
+        }
+      }
+    }
+  }
 }
 
 module.exports = { parseSlide };

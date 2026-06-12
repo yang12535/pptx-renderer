@@ -252,7 +252,47 @@
         if (el) slideObj.elements.push(el);
       }
     }
+    // 解析超链接：hlinkRId → href（通过 slide rels）
+    resolveHyperlinks(slideObj, relsMap);
     return slideObj;
+  }
+
+  function resolveHyperlinks(slideObj, relsMap) {
+    var texts = [];
+    for (var i = 0; i < slideObj.elements.length; i++) {
+      var el = slideObj.elements[i];
+      if (el.text) texts.push(el.text);
+      if (el.tableData) {
+        for (var r = 0; r < el.tableData.rows.length; r++) {
+          for (var c = 0; c < el.tableData.rows[r].cells.length; c++) {
+            var cell = el.tableData.rows[r].cells[c];
+            if (cell.textBody) texts.push(cell.textBody);
+          }
+        }
+      }
+    }
+    for (var t = 0; t < texts.length; t++) {
+      var paras = texts[t].paragraphs || [];
+      for (var p = 0; p < paras.length; p++) {
+        var lines = paras[p].lines || [];
+        for (var l = 0; l < lines.length; l++) {
+          var run = lines[l];
+          if (run.hlinkRId && relsMap[run.hlinkRId]) {
+            var target = relsMap[run.hlinkRId];
+            if (typeof target === 'string' && isLinkTarget(target)) {
+              run.href = target;
+            }
+            delete run.hlinkRId;
+          }
+        }
+      }
+    }
+  }
+
+  function isLinkTarget(target) {
+    if (typeof target !== 'string') return false;
+    var cleaned = target.replace(/[\x00-\x20\x7F]/g, '');
+    return /^(https?|mailto|tel):/i.test(cleaned);
   }
 
   function parseBackground(bgObj, theme) {
@@ -464,6 +504,10 @@
       var ea = child(rPr, 'ea') || rPr['a:ea'];
       if (latin) run.font = latin._typeface;
       if (ea) run.fontEa = ea._typeface;
+      var hlinkClick = child(rPr, 'hlinkClick') || rPr['a:hlinkClick'];
+      if (hlinkClick) {
+        run.hlinkRId = hlinkClick['_r:id'] || hlinkClick._id;
+      }
     }
     return run;
   }
@@ -970,6 +1014,14 @@
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function isSafeUrl(url) {
+    if (!url) return false;
+    var normalized = String(url).replace(/[\x00-\x20\x7F]/g, '');
+    if (!normalized) return false;
+    var scheme = normalized.split(':')[0].toLowerCase();
+    return ['http', 'https', 'mailto', 'tel'].indexOf(scheme) !== -1;
+  }
+
   function renderLine(el, animClass, animDelay) {
     var xf = el.xfrm;
     var line = el.line || { width: 1, color: '#000', dash: null };
@@ -1022,8 +1074,16 @@
         if (run.color && run.color !== 'inherit') rStyle += 'color:' + run.color + ';';
         rStyle += buildFontFamilyStyle(run.font || run.fontEa);
         var text = escapeHtml(run.text || '');
-        if (rStyle) html += '<span style="' + rStyle + '">' + text + '</span>';
-        else html += text;
+        if (run.href && isSafeUrl(run.href)) {
+          var href = String(run.href).replace(/[\x00-\x20\x7F]/g, '');
+          html += '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer"';
+          if (rStyle) html += ' style="' + rStyle + '"';
+          html += '>' + text + '</a>';
+        } else if (rStyle) {
+          html += '<span style="' + rStyle + '">' + text + '</span>';
+        } else {
+          html += text;
+        }
       }
       html += '</p>';
     }
@@ -1096,9 +1156,55 @@
         var radius = adj ? Math.min(parseAdjVal(adj.fmla), 50000) / 50000 : 0.15;
         return 'border-radius:' + Math.round(radius * 100) + '%;';
       }
+      var clip = PRST_CLIP_PATHS[name];
+      if (clip) return 'clip-path:' + clip + ';';
     }
     return '';
   }
+
+  var PRST_CLIP_PATHS = {
+    triangle:     'polygon(50% 0%, 0% 100%, 100% 100%)',
+    rtTriangle:   'polygon(0% 0%, 0% 100%, 100% 100%)',
+    diamond:      'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+    parallelogram:'polygon(25% 0%, 100% 0%, 75% 100%, 0% 100%)',
+    trapezoid:    'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)',
+    pentagon:     'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',
+    hexagon:      'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+    heptagon:     'polygon(50% 0%, 90% 20%, 100% 60%, 75% 100%, 25% 100%, 0% 60%, 10% 20%)',
+    octagon:      'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)',
+    decagon:      'polygon(50% 0%, 80% 10%, 100% 35%, 100% 65%, 80% 90%, 50% 100%, 20% 90%, 0% 65%, 0% 35%, 20% 10%)',
+    dodecagon:    'polygon(50% 0%, 75% 7%, 93% 25%, 100% 50%, 93% 75%, 75% 93%, 50% 100%, 25% 93%, 7% 75%, 0% 50%, 7% 25%, 25% 7%)',
+    rightArrow:   'polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%)',
+    leftArrow:    'polygon(100% 20%, 40% 20%, 40% 0%, 0% 50%, 40% 100%, 40% 80%, 100% 80%)',
+    upArrow:      'polygon(20% 100%, 20% 40%, 0% 40%, 50% 0%, 100% 40%, 80% 40%, 80% 100%)',
+    downArrow:    'polygon(20% 0%, 20% 60%, 0% 60%, 50% 100%, 100% 60%, 80% 60%, 80% 0%)',
+    leftRightArrow:'polygon(0% 25%, 40% 25%, 40% 0%, 100% 50%, 40% 100%, 40% 75%, 0% 75%)',
+    upDownArrow:  'polygon(25% 0%, 75% 0%, 75% 40%, 100% 40%, 50% 100%, 0% 40%, 25% 40%)',
+    quadArrow:    'polygon(25% 25%, 25% 0%, 50% 25%, 75% 0%, 75% 25%, 100% 25%, 75% 50%, 100% 75%, 75% 75%, 75% 100%, 50% 75%, 25% 100%, 25% 75%, 0% 75%, 25% 50%, 0% 25%)',
+    stripedRightArrow:'polygon(0% 15%, 50% 15%, 50% 0%, 100% 50%, 50% 100%, 50% 85%, 0% 85%)',
+    notchedRightArrow:'polygon(0% 20%, 55% 20%, 55% 0%, 100% 50%, 55% 100%, 55% 80%, 0% 80%)',
+    chevron:      'polygon(75% 0%, 100% 50%, 75% 100%, 0% 100%, 25% 50%, 0% 0%)',
+    circularArrow:'circle(50%)',
+    star5:        'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
+    star6:        'polygon(50% 0%, 65% 25%, 93% 25%, 75% 50%, 93% 75%, 65% 75%, 50% 100%, 35% 75%, 7% 75%, 25% 50%, 7% 25%, 35% 25%)',
+    star8:        'polygon(50% 0%, 63% 20%, 87% 13%, 80% 37%, 100% 50%, 80% 63%, 87% 87%, 63% 80%, 50% 100%, 37% 80%, 13% 87%, 20% 63%, 0% 50%, 20% 37%, 13% 13%, 37% 20%)',
+    star10:       'polygon(50% 0%, 61% 18%, 81% 10%, 72% 31%, 95% 36%, 74% 49%, 90% 69%, 68% 64%, 63% 82%, 50% 72%, 37% 82%, 32% 64%, 10% 69%, 26% 49%, 5% 36%, 28% 31%, 19% 10%, 39% 18%)',
+    star12:       'polygon(50% 0%, 59% 15%, 75% 8%, 68% 26%, 87% 28%, 72% 42%, 84% 59%, 66% 55%, 63% 74%, 50% 65%, 37% 74%, 34% 55%, 16% 59%, 28% 42%, 13% 28%, 32% 26%, 25% 8%, 41% 15%)',
+    star16:       'polygon(50% 0%, 57% 12%, 69% 6%, 64% 22%, 81% 21%, 69% 35%, 79% 48%, 64% 47%, 62% 62%, 50% 55%, 38% 62%, 36% 47%, 21% 48%, 31% 35%, 19% 21%, 36% 22%, 31% 6%, 43% 12%)',
+    star24:       'polygon(50% 0%, 56% 9%, 66% 5%, 62% 17%, 75% 16%, 66% 28%, 74% 38%, 62% 36%, 60% 48%, 50% 43%, 40% 48%, 38% 36%, 26% 38%, 34% 28%, 25% 16%, 38% 17%, 34% 5%, 44% 9%)',
+    plaque:       'polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)',
+    wave:         'polygon(0% 30%, 10% 10%, 30% 30%, 50% 10%, 70% 30%, 90% 10%, 100% 30%, 100% 100%, 0% 100%)',
+    doubleWave:   'polygon(0% 20%, 8% 5%, 16% 20%, 25% 5%, 33% 20%, 42% 5%, 50% 20%, 58% 5%, 67% 20%, 75% 5%, 83% 20%, 92% 5%, 100% 20%, 100% 100%, 0% 100%)',
+    plus:         'polygon(35% 0%, 65% 0%, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0% 65%, 0% 35%, 35% 35%)',
+    arc:          'polygon(0% 50%, 0% 0%, 100% 0%, 100% 50%, 50% 50%)',
+    bentArrow:    'polygon(0% 80%, 60% 80%, 60% 100%, 100% 50%, 60% 0%, 60% 20%, 0% 20%)',
+    uturnArrow:   'polygon(0% 100%, 60% 100%, 60% 30%, 20% 30%, 20% 0%, 0% 0%, 0% 50%, 40% 50%, 40% 80%, 0% 80%)',
+    moon:         'polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%, 50% 80%, 80% 50%, 50% 20%)',
+    heart:        'polygon(50% 100%, 0% 40%, 0% 15%, 20% 0%, 40% 10%, 50% 30%, 60% 10%, 80% 0%, 100% 15%, 100% 40%)',
+    lightningBolt:'polygon(60% 0%, 30% 40%, 50% 40%, 10% 100%, 70% 50%, 50% 50%, 90% 0%)',
+    sun:          'polygon(50% 0%, 61% 15%, 80% 8%, 75% 25%, 92% 30%, 78% 43%, 92% 55%, 75% 60%, 80% 78%, 61% 70%, 50% 85%, 39% 70%, 20% 78%, 25% 60%, 8% 55%, 22% 43%, 8% 30%, 25% 25%, 20% 8%, 39% 15%)',
+    cloud:        'polygon(30% 30%, 15% 45%, 15% 65%, 25% 80%, 40% 85%, 60% 85%, 75% 80%, 85% 65%, 85% 50%, 80% 35%, 65% 25%, 50% 28%, 40% 20%)',
+  };
   function parseAdjVal(fmla) {
     var m = /val\s+(\d+)/.exec(fmla);
     return m ? parseInt(m[1], 10) : 0;
