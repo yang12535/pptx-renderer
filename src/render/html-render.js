@@ -233,9 +233,9 @@ function renderText(txBody) {
       rStyle += buildFontFamilyStyle(run.font || run.fontEa);
 
       const text = escapeHtml(run.text || '');
-      if (run.href) {
+      if (run.href && isSafeUrl(run.href)) {
         const aStyle = rStyle ? ` style="${rStyle}"` : '';
-        html += `<a href="${escapeHtml(run.href)}" target="_blank" rel="noopener"${aStyle}>${text}</a>`;
+        html += `<a href="${escapeHtml(run.href)}" target="_blank" rel="noopener noreferrer"${aStyle}>${text}</a>`;
       } else if (rStyle) {
         html += `<span style="${rStyle}">${text}</span>`;
       } else {
@@ -398,6 +398,20 @@ function escapeHtml(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function isSafeUrl(url) {
+  if (!url) return false;
+  const trimmed = String(url).trim();
+  // 相对 URL、锚点、协议相对 URL 均安全
+  if (/^(\.?\/|#|[a-zA-Z][a-zA-Z0-9+.-]*:)/.test(trimmed)) {
+    const scheme = trimmed.split(':')[0].toLowerCase();
+    // 阻止危险 scheme
+    if (['javascript', 'data', 'vbscript', 'file'].includes(scheme)) return false;
+    return true;
+  }
+  // 无 scheme 的相对路径安全
+  return true;
 }
 
 module.exports = { renderSlides };

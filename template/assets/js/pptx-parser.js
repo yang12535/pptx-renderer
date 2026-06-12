@@ -1005,6 +1005,17 @@
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  function isSafeUrl(url) {
+    if (!url) return false;
+    var trimmed = String(url).trim();
+    if (/^(\.?\/|#|[a-zA-Z][a-zA-Z0-9+.-]*:)/.test(trimmed)) {
+      var scheme = trimmed.split(':')[0].toLowerCase();
+      if (['javascript', 'data', 'vbscript', 'file'].indexOf(scheme) !== -1) return false;
+      return true;
+    }
+    return true;
+  }
+
   function renderLine(el, animClass, animDelay) {
     var xf = el.xfrm;
     var line = el.line || { width: 1, color: '#000', dash: null };
@@ -1057,8 +1068,8 @@
         if (run.color && run.color !== 'inherit') rStyle += 'color:' + run.color + ';';
         rStyle += buildFontFamilyStyle(run.font || run.fontEa);
         var text = escapeHtml(run.text || '');
-        if (run.href) {
-          html += '<a href="' + escapeHtml(run.href) + '" target="_blank" rel="noopener"';
+        if (run.href && isSafeUrl(run.href)) {
+          html += '<a href="' + escapeHtml(run.href) + '" target="_blank" rel="noopener noreferrer"';
           if (rStyle) html += ' style="' + rStyle + '"';
           html += '>' + text + '</a>';
         } else if (rStyle) {
