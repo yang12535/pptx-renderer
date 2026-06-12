@@ -130,6 +130,10 @@ function parseGroup(grpObj, theme, relsMap) {
   return elements;
 }
 
+function isExternalTarget(target) {
+  return /^(https?|mailto|tel|ftp):/i.test(target);
+}
+
 function resolveHyperlinks(el, relsMap) {
   const texts = [];
   if (el.text) texts.push(el.text);
@@ -144,7 +148,11 @@ function resolveHyperlinks(el, relsMap) {
     for (const para of txBody.paragraphs || []) {
       for (const run of para.lines || []) {
         if (run.hlinkRId && relsMap[run.hlinkRId]) {
-          run.href = relsMap[run.hlinkRId];
+          const target = relsMap[run.hlinkRId];
+          // 只保留外部 URL，跳过内部 part 路径和本地文件系统路径
+          if (typeof target === 'string' && isExternalTarget(target)) {
+            run.href = target;
+          }
           delete run.hlinkRId;
         }
       }

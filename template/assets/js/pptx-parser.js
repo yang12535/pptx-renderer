@@ -278,12 +278,19 @@
         for (var l = 0; l < lines.length; l++) {
           var run = lines[l];
           if (run.hlinkRId && relsMap[run.hlinkRId]) {
-            run.href = relsMap[run.hlinkRId];
+            var target = relsMap[run.hlinkRId];
+            if (typeof target === 'string' && isExternalTarget(target)) {
+              run.href = target;
+            }
             delete run.hlinkRId;
           }
         }
       }
     }
+  }
+
+  function isExternalTarget(target) {
+    return /^(https?|mailto|tel|ftp):/i.test(target);
   }
 
   function parseBackground(bgObj, theme) {
@@ -1069,7 +1076,7 @@
         rStyle += buildFontFamilyStyle(run.font || run.fontEa);
         var text = escapeHtml(run.text || '');
         if (run.href && isSafeUrl(run.href)) {
-          html += '<a href="' + escapeHtml(run.href) + '" target="_blank" rel="noopener noreferrer"';
+          html += '<a href="' + escapeHtml(String(run.href)) + '" target="_blank" rel="noopener noreferrer"';
           if (rStyle) html += ' style="' + rStyle + '"';
           html += '>' + text + '</a>';
         } else if (rStyle) {

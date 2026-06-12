@@ -235,7 +235,7 @@ function renderText(txBody) {
       const text = escapeHtml(run.text || '');
       if (run.href && isSafeUrl(run.href)) {
         const aStyle = rStyle ? ` style="${rStyle}"` : '';
-        html += `<a href="${escapeHtml(run.href)}" target="_blank" rel="noopener noreferrer"${aStyle}>${text}</a>`;
+        html += `<a href="${escapeHtml(String(run.href))}" target="_blank" rel="noopener noreferrer"${aStyle}>${text}</a>`;
       } else if (rStyle) {
         html += `<span style="${rStyle}">${text}</span>`;
       } else {
