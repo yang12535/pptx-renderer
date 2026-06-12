@@ -61,6 +61,8 @@ function parseSlide(slidePath, theme, relsMap) {
         }
       }
     }
+    // 解析超链接：hlinkRId → href（通过 slide rels）
+    resolveHyperlinks(el, relsMap);
   }
 
   return slideObj;
@@ -126,6 +128,28 @@ function parseGroup(grpObj, theme, relsMap) {
     }
   }
   return elements;
+}
+
+function resolveHyperlinks(el, relsMap) {
+  const texts = [];
+  if (el.text) texts.push(el.text);
+  if (el.tableData) {
+    for (const row of el.tableData.rows) {
+      for (const cell of row.cells) {
+        if (cell.textBody) texts.push(cell.textBody);
+      }
+    }
+  }
+  for (const txBody of texts) {
+    for (const para of txBody.paragraphs || []) {
+      for (const run of para.lines || []) {
+        if (run.hlinkRId && relsMap[run.hlinkRId]) {
+          run.href = relsMap[run.hlinkRId];
+          delete run.hlinkRId;
+        }
+      }
+    }
+  }
 }
 
 module.exports = { parseSlide };

@@ -407,7 +407,7 @@
           pieData.push({ name: data.series[0].categories[i], value: isInitial ? 0 : toChartNumber(data.series[0].values[i]) });
         }
       }
-      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 11, color: '#495057' } }];
+      option.series = [{ type: 'pie', radius: '60%', data: pieData, label: { fontSize: 11, color: '#495057' }, animationType: 'scale', animationTypeUpdate: 'scale' }];
       option.xAxis = undefined;
       option.yAxis = undefined;
     } else if (data.chartType === 'barChart' && data.barDir === 'bar') {
